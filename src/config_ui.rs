@@ -1,23 +1,29 @@
 use eframe::egui;
 
+use crate::theme::{self, Palette};
+
 use crate::domain::{Board, Category, ConfigState};
 use crate::game::GameState;
 
 pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameState> {
     let mut start_game: Option<GameState> = None;
 
-    egui::SidePanel::left("config_left").show(ctx, |ui| {
-        ui.heading("Board Editor");
-        if ui.button("New Board").clicked() {
-            state.board = Board::default();
-        }
-        if ui.button("Start Game").clicked() {
-            start_game = Some(GameState::new(state.board.clone()));
-        }
-    });
+    egui::SidePanel::left("config_left")
+        .frame(theme::panel_frame())
+        .show(ctx, |ui| {
+            ui.heading(egui::RichText::new("Board Editor").color(Palette::CYAN));
+            if theme::secondary_button(ui, "New Board").clicked() {
+                state.board = Board::default();
+            }
+            if theme::accent_button(ui, "Start Game").clicked() {
+                start_game = Some(GameState::new(state.board.clone()));
+            }
+        });
 
     egui::CentralPanel::default().show(ctx, |ui| {
-        ui.heading("Board Editor");
+        // layered background
+        crate::theme::paint_board_background(ui);
+        ui.heading(egui::RichText::new("Board Layout").color(Palette::CYAN));
 
         let cols = state.board.categories.len().max(1);
         let rows = state
@@ -41,12 +47,12 @@ pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameState> {
                 let (rect, _) =
                     ui.allocate_exact_size(egui::vec2(col_w, header_h), egui::Sense::hover());
                 let painter = ui.painter_at(rect);
-                painter.rect_filled(rect, 6.0, egui::Color32::from_rgb(15, 15, 30));
+                painter.rect_filled(rect, 6.0, Palette::BG_ACTIVE);
                 let mut title = category.name.clone();
                 let galley = ui.painter().layout_no_wrap(
                     format!("Category {}:", ci + 1),
                     egui::FontId::proportional(13.0),
-                    egui::Color32::from_rgb(0, 255, 170),
+                    Palette::CYAN,
                 );
                 painter.galley(
                     rect.left_top() + egui::vec2(6.0, 6.0),
@@ -76,11 +82,11 @@ pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameState> {
                     let (rect, _) =
                         ui.allocate_exact_size(egui::vec2(col_w, cell_h), egui::Sense::hover());
                     let painter = ui.painter_at(rect);
-                    painter.rect_filled(rect, 6.0, egui::Color32::from_rgb(20, 20, 36));
+                    painter.rect_filled(rect, 6.0, Palette::BG_PANEL);
                     painter.rect_stroke(
                         rect.expand(1.0),
                         6.0,
-                        egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 255, 170)),
+                        egui::Stroke::new(1.0, Palette::CYAN),
                     );
 
                     // Inset fields
@@ -95,8 +101,14 @@ pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameState> {
                     );
                     ui.put(
                         left,
-                        egui::Label::new(format!("{:>3} pts", category.clues[row_idx].points))
-                            .wrap(false),
+                        egui::Label::new(
+                            egui::RichText::new(format!(
+                                "{:>3} pts",
+                                category.clues[row_idx].points
+                            ))
+                            .color(Palette::MAGENTA),
+                        )
+                        .wrap(false),
                     );
                     ui.put(
                         right.split_top_bottom_at_y(right.min.y + 24.0).0,
@@ -114,7 +126,7 @@ pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameState> {
 
         ui.separator();
         ui.horizontal(|ui| {
-            if ui.button("Add Category").clicked() {
+            if theme::accent_button(ui, "Add Category").clicked() {
                 if state.board.categories.len() >= 10 {
                     // soft limit: show toast-like label
                     ui.label(egui::RichText::new("Max 10 categories").color(egui::Color32::YELLOW));
@@ -134,7 +146,7 @@ pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameState> {
                     });
                 }
             }
-            if cols > 0 && ui.button("Remove Last Category").clicked() {
+            if cols > 0 && theme::danger_button(ui, "Remove Last").clicked() {
                 state.board.categories.pop();
             }
         });

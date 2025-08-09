@@ -4,6 +4,8 @@ use crate::config_ui;
 use crate::domain::{Board, ConfigState};
 use crate::game::GameState;
 use crate::game_ui;
+use crate::storage::{self, Snapshot};
+use crate::theme::{self, Palette};
 
 #[derive(Debug)]
 pub enum AppMode {
@@ -13,39 +15,164 @@ pub enum AppMode {
 
 pub struct PartyJeopardyApp {
     mode: AppMode,
+    // UI state
+    show_save_dialog: bool,
+    show_load_dialog: bool,
+    save_name: String,
 }
 
 impl PartyJeopardyApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        // Cyberpunk-ish theme
-        let mut visuals = egui::Visuals::dark();
-        visuals.override_text_color = Some(egui::Color32::from_rgb(0xD0, 0xFF, 0xF7));
-        visuals.window_rounding = 8.0.into();
-        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(10, 10, 18);
-        visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(20, 20, 36);
-        visuals.widgets.active.bg_fill = egui::Color32::from_rgb(36, 0, 58);
-        visuals.selection.bg_fill = egui::Color32::from_rgb(0, 255, 170);
-        _cc.egui_ctx.set_visuals(visuals);
-
-        let mut style = (*_cc.egui_ctx.style()).clone();
-        style.spacing.item_spacing = egui::vec2(10.0, 10.0);
-        style.spacing.button_padding = egui::vec2(10.0, 8.0);
-        _cc.egui_ctx.set_style(style);
+        theme::apply_global_style(&_cc.egui_ctx);
         let default_board = Board::default_with_dimensions(6, 5);
         let config = ConfigState {
             board: default_board,
         };
         Self {
             mode: AppMode::Config(config),
+            show_save_dialog: false,
+            show_load_dialog: false,
+            save_name: String::new(),
         }
     }
 }
 
 impl eframe::App for PartyJeopardyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-            ui.label("Party Jeopardy!");
-        });
+        egui::TopBottomPanel::top("top_bar")
+            .frame(
+                egui::Frame::none()
+                    .fill(Palette::BG_DARK)
+                    .inner_margin(egui::Margin::symmetric(12.0, 8.0)),
+            )
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("Jacko's Jeopardy!")
+                            .color(Palette::CYAN)
+                            .size(22.0)
+                            .strong(),
+                    );
+                    ui.add_space(8.0);
+                    ui.colored_label(Palette::MAGENTA, "::");
+                    ui.add_space(8.0);
+                    if theme::accent_button(ui, "Save").clicked() {
+                        self.show_save_dialog = true;
+                    }
+                    let in_config = matches!(self.mode, AppMode::Config(_));
+                    if in_config {
+                        if theme::secondary_button(ui, "Load").clicked() {
+                            self.show_load_dialog = true;
+                        }
+                    } else {
+                        let resp = theme::secondary_button(ui, "Load");
+                        resp.widget_info(|| {
+                            egui::WidgetInfo::labeled(egui::WidgetType::Button, "Load (disabled)")
+                        });
+                        // visually dim by overlay
+                        if resp.hovered() { /* ignore */ }
+                    }
+                });
+            });
+
+        // Save dialog window
+        if self.show_save_dialog {
+            let mut open = true;
+            egui::Window::new("Save Snapshot")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .frame(theme::window_frame())
+                .show(ctx, |ui| {
+                    ui.set_min_width(320.0);
+                    ui.label(
+                        egui::RichText::new("Enter a name for the save file").color(Palette::CYAN),
+                    );
+                    ui.text_edit_singleline(&mut self.save_name);
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if theme::accent_button(ui, "Save").clicked() {
+                            let snapshot = match &self.mode {
+                                AppMode::Config(cfg) => Snapshot {
+                                    board: cfg.board.clone(),
+                                    game: None,
+                                },
+                                AppMode::Game(game) => Snapshot {
+                                    board: game.board.clone(),
+                                    game: Some(game.clone()),
+                                },
+                            };
+                            if let Ok(path) =
+                                storage::save_snapshot_named(&self.save_name, &snapshot)
+                            {
+                                self.show_save_dialog = false;
+                                self.save_name.clear();
+                                ui.output_mut(|o| {
+                                    o.copied_text = format!("Saved: {}", path.display())
+                                });
+                            }
+                        }
+                        if theme::secondary_button(ui, "Cancel").clicked() {
+                            self.show_save_dialog = false;
+                        }
+                    });
+                });
+            self.show_save_dialog = open && self.show_save_dialog; // respect close button
+        }
+
+        // Load dialog window
+        if self.show_load_dialog {
+            let mut open = true;
+            egui::Window::new("Load Snapshot")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .frame(theme::window_frame())
+                .show(ctx, |ui| {
+                    ui.set_min_width(340.0);
+                    match storage::list_saves() {
+                        Ok(files) => {
+                            if files.is_empty() {
+                                ui.label(
+                                    egui::RichText::new("No saves found.").color(Palette::MAGENTA),
+                                );
+                            } else {
+                                ui.label(
+                                    egui::RichText::new("Select a save to load:")
+                                        .color(Palette::CYAN),
+                                );
+                            }
+                            for path in files {
+                                let label =
+                                    path.file_stem().and_then(|s| s.to_str()).unwrap_or("?");
+                                if theme::secondary_button(ui, label).clicked() {
+                                    if let Ok(snapshot) = storage::load_snapshot_from_path(&path) {
+                                        match snapshot.game {
+                                            Some(game) => self.mode = AppMode::Game(game),
+                                            None => {
+                                                self.mode = AppMode::Config(ConfigState {
+                                                    board: snapshot.board,
+                                                })
+                                            }
+                                        }
+                                        self.show_load_dialog = false;
+                                    }
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            ui.colored_label(
+                                egui::Color32::RED,
+                                format!("Error listing saves: {}", err),
+                            );
+                        }
+                    }
+                    if theme::accent_button(ui, "Close").clicked() {
+                        self.show_load_dialog = false;
+                    }
+                });
+            self.show_load_dialog = open && self.show_load_dialog;
+        }
 
         match &mut self.mode {
             AppMode::Config(config_state) => {
