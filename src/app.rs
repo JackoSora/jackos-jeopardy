@@ -2,7 +2,7 @@ use eframe::egui;
 
 use crate::config_ui;
 use crate::domain::{Board, ConfigState};
-use crate::game::{GameEngine};
+use crate::game::GameEngine;
 use crate::game_ui;
 use crate::storage::{self, Snapshot};
 use crate::theme::{self, Palette};
@@ -149,10 +149,11 @@ impl eframe::App for PartyJeopardyApp {
                                     if let Ok(snapshot) = storage::load_snapshot_from_path(&path) {
                                         match snapshot.game {
                                             Some(game_state) => {
-                                                let mut game_engine = GameEngine::new(game_state.board.clone());
+                                                let mut game_engine =
+                                                    GameEngine::new(game_state.board.clone());
                                                 *game_engine.get_state_mut() = game_state;
                                                 self.mode = AppMode::Game(game_engine);
-                                            },
+                                            }
                                             None => {
                                                 self.mode = AppMode::Config(ConfigState {
                                                     board: snapshot.board,

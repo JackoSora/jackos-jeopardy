@@ -16,8 +16,12 @@ pub fn create_test_game_engine() -> GameEngine {
 /// Create a test game state with some teams added
 pub fn create_test_game_with_teams() -> GameEngine {
     let mut engine = create_test_game_engine();
-    let _ = engine.handle_action(crate::game::GameAction::AddTeam { name: "Team 1".to_string() });
-    let _ = engine.handle_action(crate::game::GameAction::AddTeam { name: "Team 2".to_string() });
+    let _ = engine.handle_action(crate::game::GameAction::AddTeam {
+        name: "Team 1".to_string(),
+    });
+    let _ = engine.handle_action(crate::game::GameAction::AddTeam {
+        name: "Team 2".to_string(),
+    });
     engine
 }
 

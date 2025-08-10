@@ -1,6 +1,9 @@
 // Visual effects like glows, gradients, and particles
+use crate::theme::{
+    colors::Palette,
+    utils::{adjust_brightness, lerp_color, with_alpha},
+};
 use eframe::egui;
-use crate::theme::{colors::Palette, utils::{lerp_color, adjust_brightness, with_alpha}};
 
 /// Configuration for glow effects
 #[derive(Clone, Copy)]
@@ -25,7 +28,7 @@ impl GlowConfig {
             layers: 4,
         }
     }
-    
+
     /// Create a cyan glow configuration
     pub fn cyan_glow(intensity: f32, radius: f32) -> Self {
         Self {
@@ -36,7 +39,7 @@ impl GlowConfig {
             layers: 4,
         }
     }
-    
+
     /// Create a magenta glow configuration
     pub fn magenta_glow(intensity: f32, radius: f32) -> Self {
         Self {
@@ -47,7 +50,7 @@ impl GlowConfig {
             layers: 4,
         }
     }
-    
+
     /// Create a blue glow configuration
     pub fn blue_glow(intensity: f32, radius: f32) -> Self {
         Self {
@@ -70,26 +73,23 @@ pub fn paint_glow_rect(
     if glow_config.intensity <= 0.0 || glow_config.radius <= 0.0 {
         return;
     }
-    
+
     let layers = glow_config.layers.max(1);
     let step_size = glow_config.radius / layers as f32;
-    
+
     for i in 0..layers {
         let layer_progress = i as f32 / (layers - 1) as f32;
         let expansion = step_size * (i + 1) as f32;
         let alpha_factor = (1.0 - layer_progress) * glow_config.intensity;
-        
+
         let layer_color = lerp_color(
             glow_config.inner_color,
             glow_config.outer_color,
             layer_progress,
         );
-        
-        let final_color = with_alpha(
-            layer_color,
-            (layer_color.a() as f32 * alpha_factor) as u8,
-        );
-        
+
+        let final_color = with_alpha(layer_color, (layer_color.a() as f32 * alpha_factor) as u8);
+
         let expanded_rect = rect.expand(expansion);
         painter.rect_filled(expanded_rect, rounding + expansion * 0.5, final_color);
     }
@@ -105,26 +105,23 @@ pub fn paint_glow_circle(
     if glow_config.intensity <= 0.0 || glow_config.radius <= 0.0 {
         return;
     }
-    
+
     let layers = glow_config.layers.max(1);
     let step_size = glow_config.radius / layers as f32;
-    
+
     for i in 0..layers {
         let layer_progress = i as f32 / (layers - 1) as f32;
         let layer_radius = radius + step_size * (i + 1) as f32;
         let alpha_factor = (1.0 - layer_progress) * glow_config.intensity;
-        
+
         let layer_color = lerp_color(
             glow_config.inner_color,
             glow_config.outer_color,
             layer_progress,
         );
-        
-        let final_color = with_alpha(
-            layer_color,
-            (layer_color.a() as f32 * alpha_factor) as u8,
-        );
-        
+
+        let final_color = with_alpha(layer_color, (layer_color.a() as f32 * alpha_factor) as u8);
+
         painter.circle_filled(center, layer_radius, final_color);
     }
 }
@@ -139,7 +136,7 @@ pub fn paint_gradient_rect(
     rounding: f32,
 ) {
     let steps = 32; // Number of gradient steps for smooth transition
-    
+
     if vertical {
         let step_height = rect.height() / steps as f32;
         for i in 0..steps {
@@ -176,17 +173,17 @@ pub fn paint_completion_particles(
     let center = rect.center();
     let particle_count = 8;
     let max_radius = rect.width().min(rect.height()) * 0.6;
-    
+
     for i in 0..particle_count {
         let angle = (i as f32 / particle_count as f32) * 2.0 * std::f32::consts::PI;
         let progress = crate::theme::animations::ease_out_bounce(animation_progress);
         let radius = progress * max_radius;
-        
+
         let particle_pos = center + egui::Vec2::angled(angle) * radius;
         let particle_size = (1.0 - progress) * 4.0 + 1.0;
         let particle_alpha = ((1.0 - progress) * 255.0) as u8;
         let particle_color = with_alpha(Palette::CYAN, particle_alpha);
-        
+
         painter.circle_filled(particle_pos, particle_size, particle_color);
     }
 }

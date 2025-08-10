@@ -1,6 +1,6 @@
-use std::collections::VecDeque;
-use crate::game::state::{GameState, PlayPhase};
 use crate::game::actions::GameAction;
+use crate::game::state::{GameState, PlayPhase};
+use std::collections::VecDeque;
 
 #[derive(Debug)]
 pub struct GameRules;
@@ -40,16 +40,18 @@ impl GameRules {
 
     /// Generate the steal queue for a given clue, excluding the owner team
     pub fn get_steal_queue(&self, state: &GameState, excluding_team: u32) -> VecDeque<u32> {
-        let mut others: Vec<u32> = state.teams.iter()
+        let mut others: Vec<u32> = state
+            .teams
+            .iter()
             .filter(|t| t.id != excluding_team)
             .map(|t| t.id)
             .collect();
-        
+
         // Shuffle the order for fairness
         use rand::seq::SliceRandom;
         let mut rng = rand::thread_rng();
         others.as_mut_slice().shuffle(&mut rng);
-        
+
         VecDeque::from(others)
     }
 
@@ -66,7 +68,12 @@ impl GameRules {
     }
 
     /// Validate if a team can perform a specific action
-    pub fn validate_team_action(&self, state: &GameState, team_id: u32, action: &GameAction) -> bool {
+    pub fn validate_team_action(
+        &self,
+        state: &GameState,
+        team_id: u32,
+        action: &GameAction,
+    ) -> bool {
         // Check if team exists
         if state.teams.iter().find(|t| t.id == team_id).is_none() {
             return false;
@@ -81,16 +88,28 @@ impl GameRules {
                 // Anyone can start the game if conditions are met
                 self.can_start_game(state)
             }
-            GameAction::SelectClue { clue, team_id: action_team_id } => {
+            GameAction::SelectClue {
+                clue,
+                team_id: action_team_id,
+            } => {
                 // Only the active team can select clues
-                if let PlayPhase::Selecting { team_id: active_team } = state.phase {
+                if let PlayPhase::Selecting {
+                    team_id: active_team,
+                } = state.phase
+                {
                     *action_team_id == active_team && self.can_select_clue(state, *clue)
                 } else {
                     false
                 }
             }
-            GameAction::AnswerCorrect { team_id: action_team_id, .. } |
-            GameAction::AnswerIncorrect { team_id: action_team_id, .. } => {
+            GameAction::AnswerCorrect {
+                team_id: action_team_id,
+                ..
+            }
+            | GameAction::AnswerIncorrect {
+                team_id: action_team_id,
+                ..
+            } => {
                 // Only the owner team can answer
                 if let PlayPhase::Showing { owner_team_id, .. } = state.phase {
                     *action_team_id == owner_team_id
@@ -98,7 +117,10 @@ impl GameRules {
                     false
                 }
             }
-            GameAction::StealAttempt { team_id: action_team_id, .. } => {
+            GameAction::StealAttempt {
+                team_id: action_team_id,
+                ..
+            } => {
                 // Only the current stealing team can attempt
                 if let PlayPhase::Steal { current, .. } = state.phase {
                     *action_team_id == current
@@ -123,26 +145,51 @@ impl GameRules {
 
         match &state.phase {
             PlayPhase::Lobby => {
-                actions.push(GameAction::AddTeam { name: "New Team".to_string() });
+                actions.push(GameAction::AddTeam {
+                    name: "New Team".to_string(),
+                });
                 if self.can_start_game(state) {
                     actions.push(GameAction::StartGame);
                 }
             }
             PlayPhase::Selecting { team_id } => {
                 for clue in state.get_available_clues() {
-                    actions.push(GameAction::SelectClue { clue, team_id: *team_id });
+                    actions.push(GameAction::SelectClue {
+                        clue,
+                        team_id: *team_id,
+                    });
                 }
             }
-            PlayPhase::Showing { clue, owner_team_id } => {
-                actions.push(GameAction::AnswerCorrect { clue: *clue, team_id: *owner_team_id });
-                actions.push(GameAction::AnswerIncorrect { clue: *clue, team_id: *owner_team_id });
+            PlayPhase::Showing {
+                clue,
+                owner_team_id,
+            } => {
+                actions.push(GameAction::AnswerCorrect {
+                    clue: *clue,
+                    team_id: *owner_team_id,
+                });
+                actions.push(GameAction::AnswerIncorrect {
+                    clue: *clue,
+                    team_id: *owner_team_id,
+                });
             }
             PlayPhase::Steal { clue, current, .. } => {
-                actions.push(GameAction::StealAttempt { clue: *clue, team_id: *current, correct: true });
-                actions.push(GameAction::StealAttempt { clue: *clue, team_id: *current, correct: false });
+                actions.push(GameAction::StealAttempt {
+                    clue: *clue,
+                    team_id: *current,
+                    correct: true,
+                });
+                actions.push(GameAction::StealAttempt {
+                    clue: *clue,
+                    team_id: *current,
+                    correct: false,
+                });
             }
             PlayPhase::Resolved { clue, next_team_id } => {
-                actions.push(GameAction::CloseClue { clue: *clue, next_team_id: *next_team_id });
+                actions.push(GameAction::CloseClue {
+                    clue: *clue,
+                    next_team_id: *next_team_id,
+                });
             }
             PlayPhase::Intermission => {
                 // No actions available during intermission
@@ -161,14 +208,17 @@ impl GameRules {
             GameAction::AddTeam { .. } => self.can_add_team(state),
             GameAction::StartGame => self.can_start_game(state),
             GameAction::SelectClue { clue, team_id } => {
-                if let PlayPhase::Selecting { team_id: active_team } = state.phase {
+                if let PlayPhase::Selecting {
+                    team_id: active_team,
+                } = state.phase
+                {
                     *team_id == active_team && self.can_select_clue(state, *clue)
                 } else {
                     false
                 }
             }
-            GameAction::AnswerCorrect { team_id, .. } |
-            GameAction::AnswerIncorrect { team_id, .. } => {
+            GameAction::AnswerCorrect { team_id, .. }
+            | GameAction::AnswerIncorrect { team_id, .. } => {
                 if let PlayPhase::Showing { owner_team_id, .. } = state.phase {
                     *team_id == owner_team_id
                 } else {

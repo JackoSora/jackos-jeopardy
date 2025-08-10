@@ -39,7 +39,7 @@ impl ScoringEngine {
             .iter()
             .map(|t| (t.id, t.name.clone(), t.score))
             .collect();
-        
+
         // Sort by score descending
         leaderboard.sort_by(|a, b| b.2.cmp(&a.2));
         leaderboard
@@ -53,13 +53,13 @@ impl ScoringEngine {
             .max()
             .unwrap_or(0)
             .saturating_add(1);
-        
+
         teams.push(Team {
             id: next_id,
             name,
             score: 0,
         });
-        
+
         next_id
     }
 
@@ -68,7 +68,7 @@ impl ScoringEngine {
         if teams.is_empty() {
             return current_active;
         }
-        
+
         if let Some(pos) = teams.iter().position(|t| t.id == current_active) {
             let next_index = (pos + 1) % teams.len();
             teams[next_index].id
@@ -94,7 +94,11 @@ impl ScoringEngine {
         let total_points: i32 = scores.iter().sum();
         let highest_score = *scores.iter().max().unwrap_or(&0);
         let lowest_score = *scores.iter().min().unwrap_or(&0);
-        let average_score = if teams.is_empty() { 0.0 } else { total_points as f64 / teams.len() as f64 };
+        let average_score = if teams.is_empty() {
+            0.0
+        } else {
+            total_points as f64 / teams.len() as f64
+        };
 
         TeamStats {
             total_teams: teams.len(),

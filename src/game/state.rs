@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{Board, SurpriseState, Team, UiMapping, Clue};
+use crate::domain::{Board, Clue, SurpriseState, Team, UiMapping};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlayPhase {

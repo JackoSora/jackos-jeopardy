@@ -6,7 +6,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::Board;
-use crate::game::{GameState};
+use crate::game::GameState;
 
 pub fn save_board_json(path: &Path, board: &Board) -> Result<()> {
     let json = serde_json::to_string_pretty(board)?;

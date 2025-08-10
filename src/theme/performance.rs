@@ -49,7 +49,7 @@ impl PerformanceSettings {
             gradient_steps: 8,
         }
     }
-    
+
     /// Create medium performance settings
     pub fn medium_performance() -> Self {
         Self {
@@ -62,12 +62,12 @@ impl PerformanceSettings {
             gradient_steps: 16,
         }
     }
-    
+
     /// Create high performance settings (default)
     pub fn high_performance() -> Self {
         Self::default()
     }
-    
+
     /// Create ultra performance settings
     pub fn ultra_performance() -> Self {
         Self {
@@ -95,36 +95,41 @@ impl PerformanceMonitor {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Update the performance monitor with current frame timing
     pub fn update(&mut self) {
         let now = Instant::now();
         if let Some(last) = self.last_update {
             let frame_time = now.duration_since(last).as_secs_f32();
             self.frame_times.push(frame_time);
-            
+
             // Keep only last 60 frames
             if self.frame_times.len() > 60 {
                 self.frame_times.remove(0);
             }
-            
+
             // Calculate average FPS
-            let avg_frame_time = self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32;
-            self.current_fps = if avg_frame_time > 0.0 { 1.0 / avg_frame_time } else { 0.0 };
+            let avg_frame_time =
+                self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32;
+            self.current_fps = if avg_frame_time > 0.0 {
+                1.0 / avg_frame_time
+            } else {
+                0.0
+            };
         }
         self.last_update = Some(now);
     }
-    
+
     /// Get the current FPS
     pub fn get_fps(&self) -> f32 {
         self.current_fps
     }
-    
+
     /// Check if quality should be reduced due to poor performance
     pub fn should_reduce_quality(&self) -> bool {
         self.current_fps < 30.0 && self.frame_times.len() >= 30
     }
-    
+
     /// Suggest appropriate quality level based on current performance
     pub fn suggest_quality(&self) -> VisualQuality {
         if self.current_fps >= 60.0 {

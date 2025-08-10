@@ -12,14 +12,14 @@ impl Palette {
     pub const BG_PANEL: egui::Color32 = egui::Color32::from_rgb(20, 20, 36);
     pub const BG_ACTIVE: egui::Color32 = egui::Color32::from_rgb(36, 0, 58);
     pub const TEXT: egui::Color32 = egui::Color32::from_rgb(208, 255, 247);
-    
+
     // Extended cyberpunk colors
     pub const NEON_BLUE: egui::Color32 = egui::Color32::from_rgb(0, 150, 255);
     pub const ELECTRIC_PURPLE: egui::Color32 = egui::Color32::from_rgb(150, 0, 255);
     pub const CYBER_ORANGE: egui::Color32 = egui::Color32::from_rgb(255, 100, 0);
     pub const NEON_GREEN: egui::Color32 = egui::Color32::from_rgb(57, 255, 20);
     pub const ELECTRIC_PINK: egui::Color32 = egui::Color32::from_rgb(255, 20, 147);
-    
+
     // Glow effect colors
     pub const GLOW_CYAN_INNER: egui::Color32 = egui::Color32::from_rgb(100, 255, 200);
     pub const GLOW_CYAN_OUTER: egui::Color32 = egui::Color32::TRANSPARENT;
@@ -27,7 +27,7 @@ impl Palette {
     pub const GLOW_MAGENTA_OUTER: egui::Color32 = egui::Color32::TRANSPARENT;
     pub const GLOW_BLUE_INNER: egui::Color32 = egui::Color32::from_rgb(100, 200, 255);
     pub const GLOW_BLUE_OUTER: egui::Color32 = egui::Color32::TRANSPARENT;
-    
+
     // Background gradient colors
     pub const BG_GRADIENT_START: egui::Color32 = egui::Color32::from_rgb(15, 15, 25);
     pub const BG_GRADIENT_END: egui::Color32 = egui::Color32::from_rgb(25, 10, 35);
@@ -55,7 +55,7 @@ impl ColorScheme {
             ColorScheme::Danger => Palette::MAGENTA,
         }
     }
-    
+
     /// Get the accent color for this scheme
     pub fn accent_color(&self) -> egui::Color32 {
         match self {
@@ -66,7 +66,7 @@ impl ColorScheme {
             ColorScheme::Danger => Palette::ELECTRIC_PINK,
         }
     }
-    
+
     /// Get the glow colors for this scheme
     pub fn glow_colors(&self) -> (egui::Color32, egui::Color32) {
         match self {

@@ -1,8 +1,8 @@
 use crate::domain::Board;
-use crate::game::state::{GameState, PlayPhase};
-use crate::game::actions::{GameAction, GameActionResult, GameActionHandler, GameError};
+use crate::game::actions::{GameAction, GameActionHandler, GameActionResult, GameError};
 use crate::game::rules::GameRules;
 use crate::game::scoring::ScoringEngine;
+use crate::game::state::{GameState, PlayPhase};
 
 /// The main game engine that coordinates all game subsystems
 #[derive(Debug)]
@@ -61,7 +61,8 @@ impl GameEngine {
 
     /// Validate that a team can perform a specific action
     pub fn validate_team_action(&self, team_id: u32, action: &GameAction) -> bool {
-        self.rules.validate_team_action(&self.state, team_id, action)
+        self.rules
+            .validate_team_action(&self.state, team_id, action)
     }
 
     /// Get team score using the scoring engine

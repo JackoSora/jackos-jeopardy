@@ -16,7 +16,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "Party Jeopardy!",
+        "LNS with Jay",
         options,
         Box::new(|cc| Box::new(app::PartyJeopardyApp::new(cc))),
     )

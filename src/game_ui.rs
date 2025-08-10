@@ -2,7 +2,7 @@ use eframe::egui;
 
 use crate::app::AppMode;
 use crate::domain::Board;
-use crate::game::{FlashType, GameAction, GameActionResult, GameEffect, GameEngine, PlayPhase};
+use crate::game::{GameAction, GameActionResult, GameEngine, PlayPhase};
 use crate::theme::Palette;
 use crate::theme::{ModalButtonType, adjust_brightness, enhanced_modal_button};
 use crate::ui::{
@@ -54,10 +54,14 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
         let mut requested_phase: Option<PlayPhase> = None;
         let flash_id = ui.id().with("answer_flash");
         let pending_answer_id = ui.id().with("pending_answer");
+        let pending_steal_id = ui.id().with("pending_steal");
         let mut flash: Option<(AnswerFlash, Instant)> =
             ui.memory_mut(|m| m.data.get_temp(flash_id)).unwrap_or(None);
         let mut pending_answer: Option<(AnswerFlash, (usize, usize), u32)> = ui
             .memory_mut(|m| m.data.get_temp(pending_answer_id))
+            .unwrap_or(None);
+        let mut pending_steal: Option<(StealOutcome, (usize, usize), u32)> = ui
+            .memory_mut(|m| m.data.get_temp(pending_steal_id))
             .unwrap_or(None);
 
         match game_engine.get_phase() {
@@ -207,73 +211,30 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                     .find(|t| t.id == current_team_id)
                     .map(|t| t.name.clone())
                     .unwrap_or_else(|| format!("#{}", current_team_id));
-                if let Some(outcome) =
-                    draw_steal_overlay(ctx, &question, points, &team_name, has_more)
-                {
-                    match outcome {
-                        StealOutcome::Correct => {
-                            let action = GameAction::StealAttempt {
-                                clue: *clue,
-                                team_id: current_team_id,
-                                correct: true,
-                            };
-                            if let Ok(result) = game_engine.handle_action(action) {
-                                match result {
-                                    GameActionResult::Success { new_phase } => {
-                                        requested_phase = Some(new_phase)
-                                    }
-                                    GameActionResult::StateChanged {
-                                        new_phase, effects, ..
-                                    } => {
-                                        requested_phase = Some(new_phase);
-                                        for effect in effects {
-                                            if let GameEffect::FlashEffect {
-                                                effect_type: FlashType::Correct,
-                                            } = effect
-                                            {
-                                                flash =
-                                                    Some((AnswerFlash::Correct, Instant::now()));
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        StealOutcome::Incorrect => {
-                            let action = GameAction::StealAttempt {
-                                clue: *clue,
-                                team_id: current_team_id,
-                                correct: false,
-                            };
-                            if let Ok(result) = game_engine.handle_action(action) {
-                                match result {
-                                    GameActionResult::Success { new_phase } => {
-                                        requested_phase = Some(new_phase)
-                                    }
-                                    GameActionResult::StateChanged {
-                                        new_phase, effects, ..
-                                    } => {
-                                        requested_phase = Some(new_phase);
-                                        for effect in effects {
-                                            if let GameEffect::FlashEffect {
-                                                effect_type: FlashType::Incorrect,
-                                            } = effect
-                                            {
-                                                flash =
-                                                    Some((AnswerFlash::Incorrect, Instant::now()));
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
+                if let Some(outcome) = draw_steal_overlay(
+                    ctx,
+                    &question,
+                    points,
+                    &team_name,
+                    has_more,
+                    &mut flash,
+                    &mut pending_steal,
+                ) {
+                    // Store pending steal action to be executed after animation completes
+                    if pending_steal.is_none() {
+                        pending_steal = Some((outcome, *clue, current_team_id));
                     }
                 }
             }
             PlayPhase::Resolved { clue, next_team_id } => {
-                draw_resolved_overlay(ctx, game_engine, *clue, *next_team_id, &mut requested_phase);
+                draw_resolved_overlay(
+                    ctx,
+                    game_engine,
+                    *clue,
+                    *next_team_id,
+                    &mut requested_phase,
+                    &flash,
+                );
             }
             PlayPhase::Intermission => {
                 ui.label("Intermission");
@@ -297,9 +258,11 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                 } else {
                     m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id);
                 }
-                // Pending answer only used while in Showing phase
+                // Pending answer and steal only used in their respective phases
                 m.data
                     .remove::<Option<(AnswerFlash, (usize, usize), u32)>>(pending_answer_id);
+                m.data
+                    .remove::<Option<(StealOutcome, (usize, usize), u32)>>(pending_steal_id);
             });
         }
 
@@ -332,7 +295,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                 ctx.request_repaint();
                 ui.memory_mut(|m| m.data.insert_temp(flash_id, Some((kind, start))));
             } else {
-                // Animation finished -> if we have a pending answer, now apply the game action
+                // Animation finished -> if we have a pending answer or steal, now apply the game action
                 if let Some((pending_kind, clue, owner_team_id)) = pending_answer.take() {
                     let action = match pending_kind {
                         AnswerFlash::Correct => GameAction::AnswerCorrect {
@@ -360,19 +323,50 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                         }
                     }
                 }
+
+                // Handle pending steal actions after animation completes
+                if let Some((pending_outcome, clue, team_id)) = pending_steal.take() {
+                    let correct = matches!(pending_outcome, StealOutcome::Correct);
+                    let action = GameAction::StealAttempt {
+                        clue,
+                        team_id,
+                        correct,
+                    };
+                    if let Ok(result) = game_engine.handle_action(action) {
+                        match result {
+                            GameActionResult::Success { new_phase } => {
+                                requested_phase = Some(new_phase)
+                            }
+                            GameActionResult::StateChanged {
+                                new_phase, effects, ..
+                            } => {
+                                requested_phase = Some(new_phase);
+                                // Effects already represented visually by animation; nothing extra for now
+                                let _ = effects; // suppress unused warning if any
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
                 ui.memory_mut(|m| {
                     m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id);
                     m.data
                         .remove::<Option<(AnswerFlash, (usize, usize), u32)>>(pending_answer_id);
+                    m.data
+                        .remove::<Option<(StealOutcome, (usize, usize), u32)>>(pending_steal_id);
                 });
             }
         } else {
             ui.memory_mut(|m| m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id));
         }
 
-        // Persist pending answer if still waiting (flash active)
+        // Persist pending answer and steal if still waiting (flash active)
         if pending_answer.is_some() {
             ui.memory_mut(|m| m.data.insert_temp(pending_answer_id, pending_answer));
+        }
+        if pending_steal.is_some() {
+            ui.memory_mut(|m| m.data.insert_temp(pending_steal_id, pending_steal));
         }
     });
     next_mode
@@ -450,11 +444,15 @@ fn draw_showing_overlay(
                     |ui| {
                         ui.set_width(bottom_rect.width());
                         ui.horizontal(|ui| {
+                            // Block interactions during flash animation
+                            let interaction_blocked = flash.is_some() || pending_answer.is_some();
+
                             if enhanced_modal_button(ui, "Correct", ModalButtonType::Correct)
                                 .clicked()
+                                && !interaction_blocked
                             {
                                 // Start animation first; delay state mutation until animation completes
-                                if flash.is_none() {
+                                if flash.is_none() && pending_answer.is_none() {
                                     *flash = Some((AnswerFlash::Correct, Instant::now()));
                                     *pending_answer =
                                         Some((AnswerFlash::Correct, clue, owner_team_id));
@@ -465,8 +463,9 @@ fn draw_showing_overlay(
 
                             if enhanced_modal_button(ui, "Incorrect", ModalButtonType::Incorrect)
                                 .clicked()
+                                && !interaction_blocked
                             {
-                                if flash.is_none() {
+                                if flash.is_none() && pending_answer.is_none() {
                                     *flash = Some((AnswerFlash::Incorrect, Instant::now()));
                                     *pending_answer =
                                         Some((AnswerFlash::Incorrect, clue, owner_team_id));
@@ -485,6 +484,8 @@ fn draw_steal_overlay(
     points: u32,
     team_name: &str,
     has_more_contenders: bool,
+    flash: &mut Option<(AnswerFlash, Instant)>,
+    pending_steal: &mut Option<(StealOutcome, (usize, usize), u32)>,
 ) -> Option<StealOutcome> {
     let mut outcome = None;
     let screen = ctx.screen_rect();
@@ -496,7 +497,8 @@ fn draw_steal_overlay(
         .show(ctx, |ui| {
             let rect = screen;
             let painter = ui.painter_at(rect);
-            painter.rect_filled(rect, 0.0, Palette::BG_DARK);
+            // Enhanced modal background
+            paint_enhanced_modal_background(&painter, rect);
             ui.allocate_ui_with_layout(
                 rect.size(),
                 egui::Layout::top_down(egui::Align::Center),
@@ -529,26 +531,30 @@ fn draw_steal_overlay(
                     |ui| {
                         ui.set_width(bottom_rect.width());
                         ui.horizontal(|ui| {
-                            let correct_btn = egui::Button::new(
-                                egui::RichText::new("Correct")
-                                    .strong()
-                                    .color(egui::Color32::BLACK),
-                            )
-                            .fill(Palette::CYAN)
-                            .min_size(egui::vec2(160.0, 44.0));
-                            if ui.add(correct_btn).clicked() {
-                                outcome = Some(StealOutcome::Correct);
+                            // Block interactions during flash animation
+                            let interaction_blocked = flash.is_some() || pending_steal.is_some();
+
+                            if enhanced_modal_button(ui, "Correct", ModalButtonType::Correct)
+                                .clicked()
+                                && !interaction_blocked
+                            {
+                                // Start animation first; delay state mutation until animation completes
+                                if flash.is_none() && pending_steal.is_none() {
+                                    *flash = Some((AnswerFlash::Correct, Instant::now()));
+                                    outcome = Some(StealOutcome::Correct);
+                                }
                             }
-                            ui.add_space(24.0);
-                            let incorrect_btn = egui::Button::new(
-                                egui::RichText::new("Incorrect")
-                                    .strong()
-                                    .color(egui::Color32::WHITE),
-                            )
-                            .fill(Palette::MAGENTA)
-                            .min_size(egui::vec2(160.0, 44.0));
-                            if ui.add(incorrect_btn).clicked() {
-                                outcome = Some(StealOutcome::Incorrect);
+
+                            ui.add_space(40.0);
+
+                            if enhanced_modal_button(ui, "Incorrect", ModalButtonType::Incorrect)
+                                .clicked()
+                                && !interaction_blocked
+                            {
+                                if flash.is_none() && pending_steal.is_none() {
+                                    *flash = Some((AnswerFlash::Incorrect, Instant::now()));
+                                    outcome = Some(StealOutcome::Incorrect);
+                                }
                             }
                         });
                     },
@@ -564,6 +570,7 @@ fn draw_resolved_overlay(
     clue: (usize, usize),
     next_team_id: u32,
     requested_phase: &mut Option<PlayPhase>,
+    flash: &Option<(AnswerFlash, Instant)>,
 ) {
     let screen = ctx.screen_rect();
     egui::Area::new("resolved_full_overlay".into())
@@ -639,7 +646,12 @@ fn draw_resolved_overlay(
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.set_width(bottom_rect.width());
                     ui.horizontal_centered(|ui| {
-                        if enhanced_modal_button(ui, "Close", ModalButtonType::Close).clicked() {
+                        // Block interactions during flash animation (in case flash is still playing from previous phase)
+                        let interaction_blocked = flash.is_some();
+
+                        if enhanced_modal_button(ui, "Close", ModalButtonType::Close).clicked()
+                            && !interaction_blocked
+                        {
                             let action = GameAction::CloseClue { clue, next_team_id };
                             if let Ok(result) = game_engine.handle_action(action) {
                                 match result {

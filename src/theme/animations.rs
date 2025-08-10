@@ -29,27 +29,27 @@ impl AnimationState {
             current_value: 0.0,
         }
     }
-    
+
     /// Update the animation and return the current progress (0.0 to 1.0)
     pub fn update(&mut self) -> f32 {
         let elapsed = self.start_time.elapsed();
         let t = (elapsed.as_secs_f32() / self.duration.as_secs_f32()).clamp(0.0, 1.0);
-        
+
         self.current_value = match self.easing_function {
             EasingType::Linear => t,
             EasingType::EaseInOut => ease_in_out(t),
             EasingType::EaseOutBounce => ease_out_bounce(t),
             EasingType::EaseInElastic => ease_in_elastic(t),
         };
-        
+
         self.current_value
     }
-    
+
     /// Check if the animation is finished
     pub fn is_finished(&self) -> bool {
         self.start_time.elapsed() >= self.duration
     }
-    
+
     /// Restart the animation from the beginning
     pub fn restart(&mut self) {
         self.start_time = Instant::now();
@@ -105,12 +105,13 @@ impl AnimationController {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Start a new animation with the given name
     pub fn start_animation(&mut self, name: String, duration: Duration, easing: EasingType) {
-        self.animations.insert(name, AnimationState::new(duration, easing));
+        self.animations
+            .insert(name, AnimationState::new(duration, easing));
     }
-    
+
     /// Update an animation and return its current progress
     pub fn update_animation(&mut self, name: &str) -> Option<f32> {
         if let Some(animation) = self.animations.get_mut(name) {
@@ -119,17 +120,18 @@ impl AnimationController {
             None
         }
     }
-    
+
     /// Check if an animation is finished
     pub fn is_animation_finished(&self, name: &str) -> bool {
         self.animations.get(name).map_or(true, |a| a.is_finished())
     }
-    
+
     /// Remove all finished animations to free memory
     pub fn remove_finished_animations(&mut self) {
-        self.animations.retain(|_, animation| !animation.is_finished());
+        self.animations
+            .retain(|_, animation| !animation.is_finished());
     }
-    
+
     /// Restart an existing animation
     pub fn restart_animation(&mut self, name: &str) {
         if let Some(animation) = self.animations.get_mut(name) {
