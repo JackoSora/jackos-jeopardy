@@ -5,6 +5,7 @@ mod game;
 mod game_ui;
 mod storage;
 mod theme;
+mod ui;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {

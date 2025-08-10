@@ -4,6 +4,8 @@ use crate::app::AppMode;
 use crate::domain::Board;
 use crate::game::{GameState, PlayPhase};
 use crate::theme::Palette;
+use crate::ui::{paint_enhanced_clue_cell, paint_enhanced_category_header, paint_enhanced_modal_background};
+use crate::theme::{enhanced_modal_button, ModalButtonType, adjust_brightness};
 
 use rand::seq::SliceRandom;
 use std::time::{Duration, Instant};
@@ -66,7 +68,7 @@ pub fn show(ctx: &egui::Context, gs: &mut GameState) -> Option<AppMode> {
                     for cat in &gs.board.categories {
                         let (rect, _) = ui.allocate_exact_size(egui::vec2(cell_w, header_h), egui::Sense::hover());
                         let painter = ui.painter_at(rect);
-                        crate::theme::paint_enhanced_category_header(&painter, rect, &cat.name);
+                        paint_enhanced_category_header(&painter, rect, &cat.name);
                     }
                 });
                 for r in 0..rows {
@@ -76,7 +78,7 @@ pub fn show(ctx: &egui::Context, gs: &mut GameState) -> Option<AppMode> {
                             let clue = &cat.clues[r];
                             let (rect, response) = ui.allocate_exact_size(egui::vec2(cell_w, cell_h), egui::Sense::click());
                             let painter = ui.painter_at(rect);
-                            crate::theme::paint_enhanced_clue_cell(
+                            paint_enhanced_clue_cell(
                                 &painter,
                                 rect,
                                 clue.points,
@@ -148,7 +150,7 @@ fn draw_showing_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, u
         let painter = ui.painter_at(rect);
         
         // Enhanced modal background
-        crate::theme::paint_enhanced_modal_background(&painter, rect);
+        paint_enhanced_modal_background(&painter, rect);
         
         let (question, points) = gs.board.categories.get(clue.0).and_then(|cat| cat.clues.get(clue.1)).map(|c| (c.question.clone(), c.points)).unwrap_or_default();
         
@@ -157,7 +159,7 @@ fn draw_showing_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, u
             
             // Enhanced points display with glow
             ui.heading(egui::RichText::new(format!("{} pts", points))
-                .color(crate::theme::adjust_brightness(Palette::CYAN, 1.3))
+                .color(adjust_brightness(Palette::CYAN, 1.3))
                 .size(36.0));
             
             ui.add_space(30.0);
@@ -166,7 +168,7 @@ fn draw_showing_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, u
             let wrap_width = rect.width() * 0.85;
             let label = egui::Label::new(egui::RichText::new(question)
                 .size(30.0)
-                .color(crate::theme::adjust_brightness(Palette::TEXT, 1.1)))
+                .color(adjust_brightness(Palette::TEXT, 1.1)))
                 .wrap(true)
                 .truncate(false);
             ui.add_sized([wrap_width, 0.0], label);
@@ -183,7 +185,7 @@ fn draw_showing_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, u
             ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui| {
                 ui.set_width(bottom_rect.width());
                 ui.horizontal(|ui| {
-                    if crate::theme::enhanced_modal_button(ui, "Correct", crate::theme::ModalButtonType::Correct).clicked() {
+                    if enhanced_modal_button(ui, "Correct", ModalButtonType::Correct).clicked() {
                         if let Some(c) = gs.board.categories.get_mut(clue.0).and_then(|cat| cat.clues.get_mut(clue.1)) {
                             c.revealed = true;
                             c.solved = true;
@@ -197,7 +199,7 @@ fn draw_showing_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, u
                     
                     ui.add_space(40.0);
                     
-                    if crate::theme::enhanced_modal_button(ui, "Incorrect", crate::theme::ModalButtonType::Incorrect).clicked() {
+                    if enhanced_modal_button(ui, "Incorrect", ModalButtonType::Incorrect).clicked() {
                         let mut others: Vec<u32> = gs.teams.iter().filter(|t| t.id != owner_team_id).map(|t| t.id).collect();
                         let mut rng = rand::thread_rng();
                         others.as_mut_slice().shuffle(&mut rng);
@@ -235,7 +237,7 @@ fn draw_resolved_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, 
         let painter = ui.painter_at(rect);
         
         // Enhanced modal background
-        crate::theme::paint_enhanced_modal_background(&painter, rect);
+        paint_enhanced_modal_background(&painter, rect);
         
         let (question, answer, points) = gs.board.categories.get(clue.0).and_then(|cat| cat.clues.get(clue.1)).map(|c| (c.question.clone(), c.answer.clone(), c.points)).unwrap_or((String::new(), String::new(), 0));
         
@@ -244,7 +246,7 @@ fn draw_resolved_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, 
             
             // Enhanced points display
             ui.heading(egui::RichText::new(format!("{} pts", points))
-                .color(crate::theme::adjust_brightness(Palette::CYAN, 1.3))
+                .color(adjust_brightness(Palette::CYAN, 1.3))
                 .size(32.0));
             
             ui.add_space(25.0);
@@ -253,7 +255,7 @@ fn draw_resolved_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, 
             let wrap_width = rect.width() * 0.85;
             let q_label = egui::Label::new(egui::RichText::new(question)
                 .size(26.0)
-                .color(crate::theme::adjust_brightness(Palette::TEXT, 1.1)))
+                .color(adjust_brightness(Palette::TEXT, 1.1)))
                 .wrap(true)
                 .truncate(false);
             ui.add_sized([wrap_width, 0.0], q_label);
@@ -262,7 +264,7 @@ fn draw_resolved_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, 
             
             // Enhanced answer text with special styling
             let a_label = egui::Label::new(egui::RichText::new(format!("Answer: {}", answer))
-                .color(crate::theme::adjust_brightness(Palette::MAGENTA, 1.2))
+                .color(adjust_brightness(Palette::MAGENTA, 1.2))
                 .size(24.0)
                 .strong())
                 .wrap(true)
@@ -281,7 +283,7 @@ fn draw_resolved_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, 
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.set_width(bottom_rect.width());
                 ui.horizontal_centered(|ui| {
-                    if crate::theme::enhanced_modal_button(ui, "Close", crate::theme::ModalButtonType::Close).clicked() {
+                    if enhanced_modal_button(ui, "Close", ModalButtonType::Close).clicked() {
                         *requested_phase = Some(PlayPhase::Selecting { team_id: next_team_id });
                         ui.ctx().request_repaint();
                     }
