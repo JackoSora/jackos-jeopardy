@@ -2,7 +2,7 @@ use eframe::egui;
 
 use crate::config_ui;
 use crate::domain::{Board, ConfigState};
-use crate::game::GameState;
+use crate::game::{GameEngine};
 use crate::game_ui;
 use crate::storage::{self, Snapshot};
 use crate::theme::{self, Palette};
@@ -10,7 +10,7 @@ use crate::theme::{self, Palette};
 #[derive(Debug)]
 pub enum AppMode {
     Config(ConfigState),
-    Game(GameState),
+    Game(GameEngine),
 }
 
 pub struct PartyJeopardyApp {
@@ -97,9 +97,9 @@ impl eframe::App for PartyJeopardyApp {
                                     board: cfg.board.clone(),
                                     game: None,
                                 },
-                                AppMode::Game(game) => Snapshot {
-                                    board: game.board.clone(),
-                                    game: Some(game.clone()),
+                                AppMode::Game(game_engine) => Snapshot {
+                                    board: game_engine.get_state().board.clone(),
+                                    game: Some(game_engine.get_state().clone()),
                                 },
                             };
                             if let Ok(path) =
@@ -148,7 +148,11 @@ impl eframe::App for PartyJeopardyApp {
                                 if theme::secondary_button(ui, label).clicked() {
                                     if let Ok(snapshot) = storage::load_snapshot_from_path(&path) {
                                         match snapshot.game {
-                                            Some(game) => self.mode = AppMode::Game(game),
+                                            Some(game_state) => {
+                                                let mut game_engine = GameEngine::new(game_state.board.clone());
+                                                *game_engine.get_state_mut() = game_state;
+                                                self.mode = AppMode::Game(game_engine);
+                                            },
                                             None => {
                                                 self.mode = AppMode::Config(ConfigState {
                                                     board: snapshot.board,
@@ -176,12 +180,12 @@ impl eframe::App for PartyJeopardyApp {
 
         match &mut self.mode {
             AppMode::Config(config_state) => {
-                if let Some(new_game) = config_ui::show(ctx, config_state) {
-                    self.mode = AppMode::Game(new_game);
+                if let Some(new_game_engine) = config_ui::show(ctx, config_state) {
+                    self.mode = AppMode::Game(new_game_engine);
                 }
             }
-            AppMode::Game(game_state) => {
-                if let Some(next_mode) = game_ui::show(ctx, game_state) {
+            AppMode::Game(game_engine) => {
+                if let Some(next_mode) = game_ui::show(ctx, game_engine) {
                     self.mode = next_mode;
                 }
             }

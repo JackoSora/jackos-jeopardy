@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{Board, SurpriseState, Team, UiMapping};
+use crate::domain::{Board, SurpriseState, Team, UiMapping, Clue};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlayPhase {
@@ -79,5 +79,38 @@ impl GameState {
         } else {
             self.active_team = self.teams[0].id;
         }
+    }
+
+    // New query methods for better encapsulation
+    pub fn get_active_team(&self) -> Option<&Team> {
+        self.teams.iter().find(|t| t.id == self.active_team)
+    }
+
+    pub fn get_team_by_id(&self, id: u32) -> Option<&Team> {
+        self.teams.iter().find(|t| t.id == id)
+    }
+
+    pub fn get_clue(&self, clue: (usize, usize)) -> Option<&Clue> {
+        self.board.categories.get(clue.0)?.clues.get(clue.1)
+    }
+
+    pub fn is_clue_available(&self, clue: (usize, usize)) -> bool {
+        if let Some(c) = self.get_clue(clue) {
+            !c.solved
+        } else {
+            false
+        }
+    }
+
+    pub fn get_available_clues(&self) -> Vec<(usize, usize)> {
+        let mut available = Vec::new();
+        for (cat_idx, category) in self.board.categories.iter().enumerate() {
+            for (clue_idx, clue) in category.clues.iter().enumerate() {
+                if !clue.solved {
+                    available.push((cat_idx, clue_idx));
+                }
+            }
+        }
+        available
     }
 }

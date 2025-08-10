@@ -2,12 +2,12 @@ use eframe::egui;
 
 use crate::app::AppMode;
 use crate::domain::Board;
-use crate::game::{GameState, PlayPhase};
+use crate::game::{GameEngine, PlayPhase, GameAction, GameActionResult, GameEffect, FlashType};
 use crate::theme::Palette;
 use crate::ui::{paint_enhanced_clue_cell, paint_enhanced_category_header, paint_enhanced_modal_background};
 use crate::theme::{enhanced_modal_button, ModalButtonType, adjust_brightness};
 
-use rand::seq::SliceRandom;
+
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -16,19 +16,22 @@ enum AnswerFlash { Correct, Incorrect }
 #[derive(Clone, Copy, PartialEq)]
 enum StealOutcome { Correct, Incorrect }
 
-pub fn show(ctx: &egui::Context, gs: &mut GameState) -> Option<AppMode> {
+pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode> {
     egui::SidePanel::left("teams")
         .frame(crate::theme::panel_frame())
         .show(ctx, |ui| {
             ui.heading(egui::RichText::new("Teams").color(Palette::CYAN));
-            let in_lobby = matches!(gs.phase, PlayPhase::Lobby);
-            for team in &mut gs.teams {
+            let in_lobby = matches!(game_engine.get_phase(), PlayPhase::Lobby);
+            for team in &mut game_engine.get_state_mut().teams {
                 ui.horizontal(|ui| {
                     if in_lobby { ui.add(egui::TextEdit::singleline(&mut team.name)); ui.label(format!(" — {}", team.score)); }
                     else { ui.label(format!("{} — {}", team.name, team.score)); }
                 });
             }
-            if crate::theme::accent_button(ui, "Add Team").clicked() { gs.add_team(format!("Team {}", gs.teams.len() + 1)); }
+            if crate::theme::accent_button(ui, "Add Team").clicked() { 
+                let action = GameAction::AddTeam { name: format!("Team {}", game_engine.team_count() + 1) };
+                let _ = game_engine.handle_action(action);
+            }
         });
 
     let mut next_mode: Option<AppMode> = None;
@@ -39,17 +42,24 @@ pub fn show(ctx: &egui::Context, gs: &mut GameState) -> Option<AppMode> {
         let flash_id = ui.id().with("answer_flash");
         let mut flash: Option<(AnswerFlash, Instant)> = ui.memory_mut(|m| m.data.get_temp(flash_id)).unwrap_or(None);
 
-        match gs.phase {
+        match game_engine.get_phase() {
             PlayPhase::Lobby => {
                 ui.label("Lobby: Add teams and press Start");
                 if crate::theme::accent_button(ui, "Start").clicked() {
-                    if let Some(first) = gs.teams.first() { requested_phase = Some(PlayPhase::Selecting { team_id: first.id }); gs.active_team = first.id; }
+                    let action = GameAction::StartGame;
+                    if let Ok(result) = game_engine.handle_action(action) {
+                        match result {
+                            GameActionResult::Success { new_phase } => requested_phase = Some(new_phase),
+                            GameActionResult::StateChanged { new_phase, .. } => requested_phase = Some(new_phase),
+                            _ => {}
+                        }
+                    }
                 }
             }
             PlayPhase::Selecting { team_id } => {
                 ui.label(egui::RichText::new(format!("Selecting — Active Team: {}", team_id)).color(Palette::MAGENTA));
-                let cols = gs.board.categories.len().max(1);
-                let rows = gs.board.categories.get(0).map(|c| c.clues.len()).unwrap_or(0);
+                let cols = game_engine.get_state().board.categories.len().max(1);
+                let rows = game_engine.get_state().board.categories.get(0).map(|c| c.clues.len()).unwrap_or(0);
                 let available = ui.available_size();
                 let spacing_x = ui.spacing().item_spacing.x;
                 let spacing_y = ui.spacing().item_spacing.y;
@@ -65,16 +75,17 @@ pub fn show(ctx: &egui::Context, gs: &mut GameState) -> Option<AppMode> {
                 let cell_h = if rows > 0 { (remaining_height / rows as f32).max(50.0) } else { 70.0 };
                 ui.horizontal(|ui| {
                     ui.set_width(available.x);
-                    for cat in &gs.board.categories {
+                    for cat in &game_engine.get_state().board.categories {
                         let (rect, _) = ui.allocate_exact_size(egui::vec2(cell_w, header_h), egui::Sense::hover());
                         let painter = ui.painter_at(rect);
                         paint_enhanced_category_header(&painter, rect, &cat.name);
                     }
                 });
+                let mut clicked_clue: Option<(usize, usize)> = None;
                 for r in 0..rows {
                     ui.horizontal(|ui| {
                         ui.set_width(available.x);
-                        for (ci, cat) in gs.board.categories.iter().enumerate() {
+                        for (ci, cat) in game_engine.get_state().board.categories.iter().enumerate() {
                             let clue = &cat.clues[r];
                             let (rect, response) = ui.allocate_exact_size(egui::vec2(cell_w, cell_h), egui::Sense::click());
                             let painter = ui.painter_at(rect);
@@ -86,31 +97,75 @@ pub fn show(ctx: &egui::Context, gs: &mut GameState) -> Option<AppMode> {
                                 response.hovered(),
                             );
                             if !clue.solved && response.clicked() {
-                                requested_phase = Some(PlayPhase::Showing { clue: (ci, r), owner_team_id: team_id });
+                                clicked_clue = Some((ci, r));
                             }
                         }
                     });
                 }
-            }
-            PlayPhase::Showing { clue, owner_team_id } => { draw_showing_overlay(ctx, gs, clue, owner_team_id, &mut flash, &mut requested_phase); }
-            PlayPhase::Steal { clue, ref mut queue, ref mut current, owner_team_id } => {
-                let current_team_id = *current; let has_more = !queue.is_empty();
-                // Precompute immutable data needed for overlay
-                let (question, points) = gs.board.categories.get(clue.0).and_then(|cat| cat.clues.get(clue.1)).map(|c| (c.question.clone(), c.points)).unwrap_or_default();
-                let team_name = gs.teams.iter().find(|t| t.id == current_team_id).map(|t| t.name.clone()).unwrap_or_else(|| format!("#{}", current_team_id));
-                if let Some(outcome) = draw_steal_overlay(ctx, &question, points, &team_name, has_more) {
-                    match outcome {
-                        StealOutcome::Correct => { if let Some(c) = gs.board.categories.get_mut(clue.0).and_then(|cat| cat.clues.get_mut(clue.1)) { c.revealed = true; c.solved = true; if let Some(team) = gs.teams.iter_mut().find(|t| t.id == current_team_id) { team.score += c.points as i32; } } flash = Some((AnswerFlash::Correct, Instant::now())); requested_phase = Some(PlayPhase::Resolved { clue, next_team_id: current_team_id }); }
-                        StealOutcome::Incorrect => { flash = Some((AnswerFlash::Incorrect, Instant::now())); if has_more { if let Some(next) = queue.pop_front() { *current = next; } } else { if let Some(c) = gs.board.categories.get_mut(clue.0).and_then(|cat| cat.clues.get_mut(clue.1)) { c.solved = true; } requested_phase = Some(PlayPhase::Resolved { clue, next_team_id: owner_team_id }); } }
+                
+                // Handle clue selection outside the iteration
+                if let Some(clue) = clicked_clue {
+                    let action = GameAction::SelectClue { clue, team_id };
+                    if let Ok(result) = game_engine.handle_action(action) {
+                        match result {
+                            GameActionResult::Success { new_phase } => requested_phase = Some(new_phase),
+                            GameActionResult::StateChanged { new_phase, .. } => requested_phase = Some(new_phase),
+                            _ => {}
+                        }
                     }
                 }
             }
-            PlayPhase::Resolved { clue, next_team_id } => { draw_resolved_overlay(ctx, gs, clue, next_team_id, &mut requested_phase); }
+            PlayPhase::Showing { clue, owner_team_id } => { draw_showing_overlay(ctx, game_engine, clue, owner_team_id, &mut flash, &mut requested_phase); }
+            PlayPhase::Steal { clue, ref mut queue, ref mut current, owner_team_id: _ } => {
+                let current_team_id = *current; let has_more = !queue.is_empty();
+                // Precompute immutable data needed for overlay
+                let (question, points) = game_engine.get_state().board.categories.get(clue.0).and_then(|cat| cat.clues.get(clue.1)).map(|c| (c.question.clone(), c.points)).unwrap_or_default();
+                let team_name = game_engine.get_state().teams.iter().find(|t| t.id == current_team_id).map(|t| t.name.clone()).unwrap_or_else(|| format!("#{}", current_team_id));
+                if let Some(outcome) = draw_steal_overlay(ctx, &question, points, &team_name, has_more) {
+                    match outcome {
+                        StealOutcome::Correct => {
+                            let action = GameAction::StealAttempt { clue, team_id: current_team_id, correct: true };
+                            if let Ok(result) = game_engine.handle_action(action) {
+                                match result {
+                                    GameActionResult::Success { new_phase } => requested_phase = Some(new_phase),
+                                    GameActionResult::StateChanged { new_phase, effects, .. } => {
+                                        requested_phase = Some(new_phase);
+                                        for effect in effects {
+                                            if let GameEffect::FlashEffect { effect_type: FlashType::Correct } = effect {
+                                                flash = Some((AnswerFlash::Correct, Instant::now()));
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        StealOutcome::Incorrect => {
+                            let action = GameAction::StealAttempt { clue, team_id: current_team_id, correct: false };
+                            if let Ok(result) = game_engine.handle_action(action) {
+                                match result {
+                                    GameActionResult::Success { new_phase } => requested_phase = Some(new_phase),
+                                    GameActionResult::StateChanged { new_phase, effects, .. } => {
+                                        requested_phase = Some(new_phase);
+                                        for effect in effects {
+                                            if let GameEffect::FlashEffect { effect_type: FlashType::Incorrect } = effect {
+                                                flash = Some((AnswerFlash::Incorrect, Instant::now()));
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            PlayPhase::Resolved { clue, next_team_id } => { draw_resolved_overlay(ctx, game_engine, clue, next_team_id, &mut requested_phase); }
             PlayPhase::Intermission => { ui.label("Intermission"); }
             PlayPhase::Finished => { ui.label("Finished"); if crate::theme::secondary_button(ui, "Back to Config").clicked() { next_mode = Some(AppMode::Config(crate::domain::ConfigState { board: Board::default() })); } }
         }
 
-        if let Some(p) = requested_phase { gs.phase = p; ui.memory_mut(|m| m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id)); }
+        if let Some(p) = requested_phase { game_engine.get_state_mut().phase = p; ui.memory_mut(|m| m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id)); }
 
         if let Some((kind, start)) = flash { 
             let elapsed = start.elapsed(); 
@@ -144,6 +199,7 @@ pub fn show(ctx: &egui::Context, gs: &mut GameState) -> Option<AppMode> {
 }
 
 fn draw_showing_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, usize), owner_team_id: u32, flash: &mut Option<(AnswerFlash, Instant)>, requested_phase: &mut Option<PlayPhase>) {
+    let action_handler = GameActionHandler::new();
     let screen = ctx.screen_rect();
     egui::Area::new("question_full_overlay".into()).order(egui::Order::Foreground).movable(false).interactable(true).fixed_pos(screen.min).show(ctx, |ui| {
         let rect = screen;
@@ -186,34 +242,41 @@ fn draw_showing_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, u
                 ui.set_width(bottom_rect.width());
                 ui.horizontal(|ui| {
                     if enhanced_modal_button(ui, "Correct", ModalButtonType::Correct).clicked() {
-                        if let Some(c) = gs.board.categories.get_mut(clue.0).and_then(|cat| cat.clues.get_mut(clue.1)) {
-                            c.revealed = true;
-                            c.solved = true;
-                            if let Some(team) = gs.teams.iter_mut().find(|t| t.id == owner_team_id) {
-                                team.score += c.points as i32;
+                        let action = GameAction::AnswerCorrect { clue, team_id: owner_team_id };
+                        if let Ok(result) = action_handler.handle(gs, action) {
+                            match result {
+                                GameActionResult::Success { new_phase } => *requested_phase = Some(new_phase),
+                                GameActionResult::StateChanged { new_phase, effects, .. } => {
+                                    *requested_phase = Some(new_phase);
+                                    for effect in effects {
+                                        if let GameEffect::FlashEffect { effect_type: FlashType::Correct } = effect {
+                                            *flash = Some((AnswerFlash::Correct, Instant::now()));
+                                        }
+                                    }
+                                }
+                                _ => {}
                             }
                         }
-                        *flash = Some((AnswerFlash::Correct, Instant::now()));
-                        *requested_phase = Some(PlayPhase::Resolved { clue, next_team_id: owner_team_id });
                     }
                     
                     ui.add_space(40.0);
                     
                     if enhanced_modal_button(ui, "Incorrect", ModalButtonType::Incorrect).clicked() {
-                        let mut others: Vec<u32> = gs.teams.iter().filter(|t| t.id != owner_team_id).map(|t| t.id).collect();
-                        let mut rng = rand::thread_rng();
-                        others.as_mut_slice().shuffle(&mut rng);
-                        let mut queue = std::collections::VecDeque::from(others);
-                        let current = queue.pop_front().unwrap_or(owner_team_id);
-                        if let Some(cat) = gs.board.categories.get(clue.0) {
-                            if let Some(c) = cat.clues.get(clue.1) {
-                                if let Some(team) = gs.teams.iter_mut().find(|t| t.id == owner_team_id) {
-                                    team.score -= c.points as i32;
+                        let action = GameAction::AnswerIncorrect { clue, team_id: owner_team_id };
+                        if let Ok(result) = action_handler.handle(gs, action) {
+                            match result {
+                                GameActionResult::Success { new_phase } => *requested_phase = Some(new_phase),
+                                GameActionResult::StateChanged { new_phase, effects, .. } => {
+                                    *requested_phase = Some(new_phase);
+                                    for effect in effects {
+                                        if let GameEffect::FlashEffect { effect_type: FlashType::Incorrect } = effect {
+                                            *flash = Some((AnswerFlash::Incorrect, Instant::now()));
+                                        }
+                                    }
                                 }
+                                _ => {}
                             }
                         }
-                        *flash = Some((AnswerFlash::Incorrect, Instant::now()));
-                        *requested_phase = Some(PlayPhase::Steal { clue, queue, current, owner_team_id });
                     }
                 });
             });
@@ -231,6 +294,7 @@ fn draw_steal_overlay(ctx: &egui::Context, question: &str, points: u32, team_nam
     }); outcome }
 
 fn draw_resolved_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, usize), next_team_id: u32, requested_phase: &mut Option<PlayPhase>) {
+    let action_handler = GameActionHandler::new();
     let screen = ctx.screen_rect();
     egui::Area::new("resolved_full_overlay".into()).order(egui::Order::Foreground).movable(false).interactable(true).fixed_pos(screen.min).show(ctx, |ui| {
         let rect = screen;
@@ -284,7 +348,14 @@ fn draw_resolved_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, 
                 ui.set_width(bottom_rect.width());
                 ui.horizontal_centered(|ui| {
                     if enhanced_modal_button(ui, "Close", ModalButtonType::Close).clicked() {
-                        *requested_phase = Some(PlayPhase::Selecting { team_id: next_team_id });
+                        let action = GameAction::CloseClue { clue, next_team_id };
+                        if let Ok(result) = action_handler.handle(gs, action) {
+                            match result {
+                                GameActionResult::Success { new_phase } => *requested_phase = Some(new_phase),
+                                GameActionResult::StateChanged { new_phase, .. } => *requested_phase = Some(new_phase),
+                                _ => {}
+                            }
+                        }
                         ui.ctx().request_repaint();
                     }
                 });

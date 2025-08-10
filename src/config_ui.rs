@@ -3,10 +3,10 @@ use eframe::egui;
 use crate::theme::{self, Palette};
 
 use crate::domain::{Board, Category, ConfigState};
-use crate::game::GameState;
+use crate::game::{GameEngine};
 
-pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameState> {
-    let mut start_game: Option<GameState> = None;
+pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameEngine> {
+    let mut start_game: Option<GameEngine> = None;
 
     egui::SidePanel::left("config_left")
         .frame(theme::panel_frame())
@@ -16,7 +16,7 @@ pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameState> {
                 state.board = Board::default();
             }
             if theme::accent_button(ui, "Start Game").clicked() {
-                start_game = Some(GameState::new(state.board.clone()));
+                start_game = Some(GameEngine::new(state.board.clone()));
             }
         });
 
