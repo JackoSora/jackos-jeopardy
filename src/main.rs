@@ -12,7 +12,7 @@ fn main() -> eframe::Result<()> {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 800.0])
             .with_min_inner_size([900.0, 600.0])
-            .with_title("Party Jeopardy!"),
+            .with_title("Jacko's Jeopardy"),
         ..Default::default()
     };
     eframe::run_native(
