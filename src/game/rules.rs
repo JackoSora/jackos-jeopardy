@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use crate::game::state::{GameState, PlayPhase};
 use crate::game::actions::GameAction;
 
+#[derive(Debug)]
 pub struct GameRules;
 
 impl GameRules {

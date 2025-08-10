@@ -105,7 +105,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                 
                 // Handle clue selection outside the iteration
                 if let Some(clue) = clicked_clue {
-                    let action = GameAction::SelectClue { clue, team_id };
+                    let action = GameAction::SelectClue { clue, team_id: *team_id };
                     if let Ok(result) = game_engine.handle_action(action) {
                         match result {
                             GameActionResult::Success { new_phase } => requested_phase = Some(new_phase),
@@ -115,16 +115,21 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                     }
                 }
             }
-            PlayPhase::Showing { clue, owner_team_id } => { draw_showing_overlay(ctx, game_engine, clue, owner_team_id, &mut flash, &mut requested_phase); }
-            PlayPhase::Steal { clue, ref mut queue, ref mut current, owner_team_id: _ } => {
-                let current_team_id = *current; let has_more = !queue.is_empty();
+            PlayPhase::Showing { clue, owner_team_id } => { draw_showing_overlay(ctx, game_engine, *clue, *owner_team_id, &mut flash, &mut requested_phase); }
+            PlayPhase::Steal { clue, queue: _, current, owner_team_id: _ } => {
+                let current_team_id = *current; 
+                let has_more = if let PlayPhase::Steal { queue, .. } = &game_engine.get_state().phase {
+                    !queue.is_empty()
+                } else {
+                    false
+                };
                 // Precompute immutable data needed for overlay
                 let (question, points) = game_engine.get_state().board.categories.get(clue.0).and_then(|cat| cat.clues.get(clue.1)).map(|c| (c.question.clone(), c.points)).unwrap_or_default();
                 let team_name = game_engine.get_state().teams.iter().find(|t| t.id == current_team_id).map(|t| t.name.clone()).unwrap_or_else(|| format!("#{}", current_team_id));
                 if let Some(outcome) = draw_steal_overlay(ctx, &question, points, &team_name, has_more) {
                     match outcome {
                         StealOutcome::Correct => {
-                            let action = GameAction::StealAttempt { clue, team_id: current_team_id, correct: true };
+                            let action = GameAction::StealAttempt { clue: *clue, team_id: current_team_id, correct: true };
                             if let Ok(result) = game_engine.handle_action(action) {
                                 match result {
                                     GameActionResult::Success { new_phase } => requested_phase = Some(new_phase),
@@ -141,7 +146,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                             }
                         }
                         StealOutcome::Incorrect => {
-                            let action = GameAction::StealAttempt { clue, team_id: current_team_id, correct: false };
+                            let action = GameAction::StealAttempt { clue: *clue, team_id: current_team_id, correct: false };
                             if let Ok(result) = game_engine.handle_action(action) {
                                 match result {
                                     GameActionResult::Success { new_phase } => requested_phase = Some(new_phase),
@@ -160,7 +165,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                     }
                 }
             }
-            PlayPhase::Resolved { clue, next_team_id } => { draw_resolved_overlay(ctx, game_engine, clue, next_team_id, &mut requested_phase); }
+            PlayPhase::Resolved { clue, next_team_id } => { draw_resolved_overlay(ctx, game_engine, *clue, *next_team_id, &mut requested_phase); }
             PlayPhase::Intermission => { ui.label("Intermission"); }
             PlayPhase::Finished => { ui.label("Finished"); if crate::theme::secondary_button(ui, "Back to Config").clicked() { next_mode = Some(AppMode::Config(crate::domain::ConfigState { board: Board::default() })); } }
         }
@@ -198,8 +203,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
     next_mode
 }
 
-fn draw_showing_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, usize), owner_team_id: u32, flash: &mut Option<(AnswerFlash, Instant)>, requested_phase: &mut Option<PlayPhase>) {
-    let action_handler = GameActionHandler::new();
+fn draw_showing_overlay(ctx: &egui::Context, game_engine: &mut GameEngine, clue: (usize, usize), owner_team_id: u32, flash: &mut Option<(AnswerFlash, Instant)>, requested_phase: &mut Option<PlayPhase>) {
     let screen = ctx.screen_rect();
     egui::Area::new("question_full_overlay".into()).order(egui::Order::Foreground).movable(false).interactable(true).fixed_pos(screen.min).show(ctx, |ui| {
         let rect = screen;
@@ -208,7 +212,7 @@ fn draw_showing_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, u
         // Enhanced modal background
         paint_enhanced_modal_background(&painter, rect);
         
-        let (question, points) = gs.board.categories.get(clue.0).and_then(|cat| cat.clues.get(clue.1)).map(|c| (c.question.clone(), c.points)).unwrap_or_default();
+        let (question, points) = game_engine.get_state().board.categories.get(clue.0).and_then(|cat| cat.clues.get(clue.1)).map(|c| (c.question.clone(), c.points)).unwrap_or_default();
         
         ui.allocate_ui_with_layout(rect.size(), egui::Layout::top_down(egui::Align::Center), |ui| {
             ui.add_space(50.0);
@@ -243,7 +247,7 @@ fn draw_showing_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, u
                 ui.horizontal(|ui| {
                     if enhanced_modal_button(ui, "Correct", ModalButtonType::Correct).clicked() {
                         let action = GameAction::AnswerCorrect { clue, team_id: owner_team_id };
-                        if let Ok(result) = action_handler.handle(gs, action) {
+                        if let Ok(result) = game_engine.handle_action(action) {
                             match result {
                                 GameActionResult::Success { new_phase } => *requested_phase = Some(new_phase),
                                 GameActionResult::StateChanged { new_phase, effects, .. } => {
@@ -263,7 +267,7 @@ fn draw_showing_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, u
                     
                     if enhanced_modal_button(ui, "Incorrect", ModalButtonType::Incorrect).clicked() {
                         let action = GameAction::AnswerIncorrect { clue, team_id: owner_team_id };
-                        if let Ok(result) = action_handler.handle(gs, action) {
+                        if let Ok(result) = game_engine.handle_action(action) {
                             match result {
                                 GameActionResult::Success { new_phase } => *requested_phase = Some(new_phase),
                                 GameActionResult::StateChanged { new_phase, effects, .. } => {
@@ -293,8 +297,7 @@ fn draw_steal_overlay(ctx: &egui::Context, question: &str, points: u32, team_nam
         ui.allocate_ui_at_rect(bottom_rect, |ui| { ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui| { ui.set_width(bottom_rect.width()); ui.horizontal(|ui| { let correct_btn = egui::Button::new(egui::RichText::new("Correct").strong().color(egui::Color32::BLACK)).fill(Palette::CYAN).min_size(egui::vec2(160.0,44.0)); if ui.add(correct_btn).clicked() { outcome = Some(StealOutcome::Correct); } ui.add_space(24.0); let incorrect_btn = egui::Button::new(egui::RichText::new("Incorrect").strong().color(egui::Color32::WHITE)).fill(Palette::MAGENTA).min_size(egui::vec2(160.0,44.0)); if ui.add(incorrect_btn).clicked() { outcome = Some(StealOutcome::Incorrect); } }); }); });
     }); outcome }
 
-fn draw_resolved_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, usize), next_team_id: u32, requested_phase: &mut Option<PlayPhase>) {
-    let action_handler = GameActionHandler::new();
+fn draw_resolved_overlay(ctx: &egui::Context, game_engine: &mut GameEngine, clue: (usize, usize), next_team_id: u32, requested_phase: &mut Option<PlayPhase>) {
     let screen = ctx.screen_rect();
     egui::Area::new("resolved_full_overlay".into()).order(egui::Order::Foreground).movable(false).interactable(true).fixed_pos(screen.min).show(ctx, |ui| {
         let rect = screen;
@@ -303,7 +306,7 @@ fn draw_resolved_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, 
         // Enhanced modal background
         paint_enhanced_modal_background(&painter, rect);
         
-        let (question, answer, points) = gs.board.categories.get(clue.0).and_then(|cat| cat.clues.get(clue.1)).map(|c| (c.question.clone(), c.answer.clone(), c.points)).unwrap_or((String::new(), String::new(), 0));
+        let (question, answer, points) = game_engine.get_state().board.categories.get(clue.0).and_then(|cat| cat.clues.get(clue.1)).map(|c| (c.question.clone(), c.answer.clone(), c.points)).unwrap_or((String::new(), String::new(), 0));
         
         ui.allocate_ui_with_layout(rect.size(), egui::Layout::top_down(egui::Align::Center), |ui| {
             ui.add_space(40.0);
@@ -349,7 +352,7 @@ fn draw_resolved_overlay(ctx: &egui::Context, gs: &mut GameState, clue: (usize, 
                 ui.horizontal_centered(|ui| {
                     if enhanced_modal_button(ui, "Close", ModalButtonType::Close).clicked() {
                         let action = GameAction::CloseClue { clue, next_team_id };
-                        if let Ok(result) = action_handler.handle(gs, action) {
+                        if let Ok(result) = game_engine.handle_action(action) {
                             match result {
                                 GameActionResult::Success { new_phase } => *requested_phase = Some(new_phase),
                                 GameActionResult::StateChanged { new_phase, .. } => *requested_phase = Some(new_phase),

@@ -5,6 +5,7 @@ use crate::game::rules::GameRules;
 use crate::game::scoring::ScoringEngine;
 
 /// The main game engine that coordinates all game subsystems
+#[derive(Debug)]
 pub struct GameEngine {
     pub state: GameState,
     action_handler: GameActionHandler,

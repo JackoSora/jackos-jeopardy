@@ -47,6 +47,7 @@ pub enum GameError {
     InsufficientTeams,
 }
 
+#[derive(Debug)]
 pub struct GameActionHandler {
     rules: GameRules,
     scoring: ScoringEngine,

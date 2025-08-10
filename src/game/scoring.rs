@@ -1,5 +1,6 @@
 use crate::domain::Team;
 
+#[derive(Debug)]
 pub struct ScoringEngine;
 
 impl ScoringEngine {
