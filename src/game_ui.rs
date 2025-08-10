@@ -172,32 +172,39 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
 
         if let Some(p) = requested_phase { game_engine.get_state_mut().phase = p; ui.memory_mut(|m| m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id)); }
 
-        if let Some((kind, start)) = flash { 
-            let elapsed = start.elapsed(); 
+        if let Some((kind, start)) = flash {
+            let elapsed = start.elapsed();
             let duration = Duration::from_millis(1200); // Extended duration for more expressive animation
-            if elapsed < duration { 
+            if elapsed < duration {
                 let t = (elapsed.as_secs_f32() / duration.as_secs_f32()).clamp(0.0, 1.0);
-                let rect = ui.max_rect();
-                let painter = ui.painter();
-                
-                match kind {
-                    AnswerFlash::Correct => {
-                        // Success burst animation with multiple layers
-                        draw_success_animation(&painter, rect, t);
-                    }
-                    AnswerFlash::Incorrect => {
-                        // Failure shake and pulse animation
-                        draw_failure_animation(&painter, rect, t);
-                    }
-                }
-                
-                ui.ctx().request_repaint(); 
-                ui.memory_mut(|m| m.data.insert_temp(flash_id, Some((kind, start)))); 
-            } else { 
-                ui.memory_mut(|m| m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id)); 
-            } 
-        } else { 
-            ui.memory_mut(|m| m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id)); 
+                let ctx = ui.ctx();
+                let rect = ctx.screen_rect();
+                egui::Area::new("answer_flash_overlay".into())
+                    .order(egui::Order::Foreground)
+                    .movable(false)
+                    .interactable(false)
+                    .fixed_pos(rect.min)
+                    .show(ctx, |ui| {
+                        let painter = ui.painter_at(rect);
+                        match kind {
+                            AnswerFlash::Correct => {
+                                // Success burst animation with multiple layers
+                                draw_success_animation(&painter, rect, t);
+                            }
+                            AnswerFlash::Incorrect => {
+                                // Failure shake and pulse animation
+                                draw_failure_animation(&painter, rect, t);
+                            }
+                        }
+                    });
+
+                ctx.request_repaint();
+                ui.memory_mut(|m| m.data.insert_temp(flash_id, Some((kind, start))));
+            } else {
+                ui.memory_mut(|m| m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id));
+            }
+        } else {
+            ui.memory_mut(|m| m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id));
         }
     });
     next_mode
