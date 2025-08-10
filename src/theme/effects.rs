@@ -40,27 +40,6 @@ impl GlowConfig {
         }
     }
 
-    /// Create a magenta glow configuration
-    pub fn magenta_glow(intensity: f32, radius: f32) -> Self {
-        Self {
-            inner_color: Palette::GLOW_MAGENTA_INNER,
-            outer_color: Palette::GLOW_MAGENTA_OUTER,
-            intensity: intensity.clamp(0.0, 1.0),
-            radius: radius.max(0.0),
-            layers: 4,
-        }
-    }
-
-    /// Create a blue glow configuration
-    pub fn blue_glow(intensity: f32, radius: f32) -> Self {
-        Self {
-            inner_color: Palette::GLOW_BLUE_INNER,
-            outer_color: Palette::GLOW_BLUE_OUTER,
-            intensity: intensity.clamp(0.0, 1.0),
-            radius: radius.max(0.0),
-            layers: 4,
-        }
-    }
 }
 
 /// Paint a rectangle with glow effect
@@ -95,36 +74,6 @@ pub fn paint_glow_rect(
     }
 }
 
-/// Paint a circle with glow effect
-pub fn paint_glow_circle(
-    painter: &egui::Painter,
-    center: egui::Pos2,
-    radius: f32,
-    glow_config: GlowConfig,
-) {
-    if glow_config.intensity <= 0.0 || glow_config.radius <= 0.0 {
-        return;
-    }
-
-    let layers = glow_config.layers.max(1);
-    let step_size = glow_config.radius / layers as f32;
-
-    for i in 0..layers {
-        let layer_progress = i as f32 / (layers - 1) as f32;
-        let layer_radius = radius + step_size * (i + 1) as f32;
-        let alpha_factor = (1.0 - layer_progress) * glow_config.intensity;
-
-        let layer_color = lerp_color(
-            glow_config.inner_color,
-            glow_config.outer_color,
-            layer_progress,
-        );
-
-        let final_color = with_alpha(layer_color, (layer_color.a() as f32 * alpha_factor) as u8);
-
-        painter.circle_filled(center, layer_radius, final_color);
-    }
-}
 
 /// Paint a gradient rectangle
 pub fn paint_gradient_rect(
@@ -188,8 +137,3 @@ pub fn paint_completion_particles(
     }
 }
 
-/// Calculate appropriate glow radius based on element size
-pub fn calculate_glow_radius_for_rect(rect: egui::Rect, base_radius: f32) -> f32 {
-    let size_factor = (rect.width().min(rect.height()) / 100.0).clamp(0.5, 2.0);
-    base_radius * size_factor
-}

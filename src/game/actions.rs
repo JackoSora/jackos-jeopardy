@@ -37,9 +37,6 @@ pub enum GameActionResult {
     Success {
         new_phase: PlayPhase,
     },
-    Error {
-        message: String,
-    },
     StateChanged {
         new_phase: PlayPhase,
         effects: Vec<GameEffect>,
@@ -51,7 +48,6 @@ pub enum GameEffect {
     ScoreChanged { team_id: u32, delta: i32 },
     ClueRevealed { clue: (usize, usize) },
     ClueSolved { clue: (usize, usize) },
-    TeamRotated { new_active_team: u32 },
     FlashEffect { effect_type: FlashType },
 }
 
@@ -64,11 +60,6 @@ pub enum FlashType {
 #[derive(Debug, Clone)]
 pub enum GameError {
     InvalidAction { action: String, reason: String },
-    InvalidTeam { team_id: u32 },
-    InvalidClue { clue: (usize, usize) },
-    GameNotStarted,
-    GameFinished,
-    InsufficientTeams,
 }
 
 #[derive(Debug)]

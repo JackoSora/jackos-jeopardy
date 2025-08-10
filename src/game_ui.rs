@@ -378,7 +378,7 @@ fn draw_showing_overlay(
     clue: (usize, usize),
     owner_team_id: u32,
     flash: &mut Option<(AnswerFlash, Instant)>,
-    requested_phase: &mut Option<PlayPhase>,
+    _requested_phase: &mut Option<PlayPhase>,
     pending_answer: &mut Option<(AnswerFlash, (usize, usize), u32)>,
 ) {
     let screen = ctx.screen_rect();

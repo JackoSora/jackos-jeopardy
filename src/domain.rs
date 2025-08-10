@@ -1,5 +1,3 @@
-use rand::seq::SliceRandom;
-use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,29 +57,6 @@ impl UiMapping {
         Self { logical_to_visual }
     }
 
-    pub fn shuffle_unsolved_in_place(&mut self, board: &Board, num_rows: usize) {
-        let mut rng = thread_rng();
-        // only shuffle entries corresponding to unsolved clues
-        let positions: Vec<usize> = (0..self.logical_to_visual.len())
-            .filter(|&i| {
-                let (c, r) = (i / num_rows, i % num_rows);
-                if let Some(cat) = board.categories.get(c) {
-                    if let Some(clue) = cat.clues.get(r) {
-                        return !clue.solved;
-                    }
-                }
-                false
-            })
-            .collect();
-        let mut values: Vec<(usize, usize)> = positions
-            .iter()
-            .map(|&i| self.logical_to_visual[i])
-            .collect();
-        values.shuffle(&mut rng);
-        for (pos, val) in positions.iter().zip(values.into_iter()) {
-            self.logical_to_visual[*pos] = val;
-        }
-    }
 }
 
 impl Default for Board {

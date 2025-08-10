@@ -1,7 +1,7 @@
 //! Test utilities and test modules for the game logic
 
-use crate::domain::{Board, Team};
-use crate::game::{GameEngine, GameState, PlayPhase};
+use crate::domain::Board;
+use crate::game::{GameEngine, PlayPhase};
 
 /// Create a simple test board with 2 categories and 2 clues each
 pub fn create_test_board() -> Board {

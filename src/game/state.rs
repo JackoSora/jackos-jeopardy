@@ -51,35 +51,6 @@ impl GameState {
         }
     }
 
-    pub fn add_team(&mut self, name: String) {
-        let next_id: u32 = self
-            .teams
-            .iter()
-            .map(|t| t.id)
-            .max()
-            .unwrap_or(0)
-            .saturating_add(1);
-        self.teams.push(Team {
-            id: next_id,
-            name,
-            score: 0,
-        });
-        if matches!(self.phase, PlayPhase::Lobby) && self.active_team == 0 {
-            self.active_team = next_id;
-        }
-    }
-
-    pub fn rotate_to_next_active_team(&mut self) {
-        if self.teams.is_empty() {
-            return;
-        }
-        if let Some(pos) = self.teams.iter().position(|t| t.id == self.active_team) {
-            let next_index = (pos + 1) % self.teams.len();
-            self.active_team = self.teams[next_index].id;
-        } else {
-            self.active_team = self.teams[0].id;
-        }
-    }
 
     // New query methods for better encapsulation
     pub fn get_active_team(&self) -> Option<&Team> {
@@ -88,6 +59,18 @@ impl GameState {
 
     pub fn get_team_by_id(&self, id: u32) -> Option<&Team> {
         self.teams.iter().find(|t| t.id == id)
+    }
+
+    pub fn get_available_clues(&self) -> Vec<(usize, usize)> {
+        let mut available = Vec::new();
+        for (cat_idx, category) in self.board.categories.iter().enumerate() {
+            for (clue_idx, clue) in category.clues.iter().enumerate() {
+                if !clue.solved {
+                    available.push((cat_idx, clue_idx));
+                }
+            }
+        }
+        available
     }
 
     pub fn get_clue(&self, clue: (usize, usize)) -> Option<&Clue> {
@@ -102,15 +85,4 @@ impl GameState {
         }
     }
 
-    pub fn get_available_clues(&self) -> Vec<(usize, usize)> {
-        let mut available = Vec::new();
-        for (cat_idx, category) in self.board.categories.iter().enumerate() {
-            for (clue_idx, clue) in category.clues.iter().enumerate() {
-                if !clue.solved {
-                    available.push((cat_idx, clue_idx));
-                }
-            }
-        }
-        available
-    }
 }

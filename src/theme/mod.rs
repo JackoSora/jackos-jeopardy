@@ -8,15 +8,12 @@ pub mod performance;
 pub mod utils;
 
 // Re-export commonly used items for convenience
-pub use animations::{AnimationController, AnimationState, EasingType};
 pub use buttons::{
     ModalButtonType, accent_button, danger_button, enhanced_modal_button, secondary_button,
 };
 pub use colors::Palette;
-pub use effects::{GlowConfig, paint_glow_rect, paint_gradient_rect};
 pub use frames::{panel_frame, window_frame};
-pub use performance::{PerformanceMonitor, PerformanceSettings, VisualQuality};
-pub use utils::{adjust_brightness, lerp_color, with_alpha};
+pub use utils::adjust_brightness;
 
 use eframe::egui;
 

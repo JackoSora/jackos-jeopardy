@@ -1,5 +1,6 @@
 use super::*;
-use crate::game::{FlashType, GameAction, GameActionResult, GameEffect};
+use crate::game::actions::{FlashType, GameEffect};
+use crate::game::{GameAction, GameActionResult};
 
 #[test]
 fn test_add_team_action_handler() {

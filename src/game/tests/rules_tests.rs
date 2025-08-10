@@ -1,6 +1,6 @@
 use super::*;
 use crate::game::rules::GameRules;
-use crate::game::{GameAction, PlayPhase};
+use crate::game::GameAction;
 
 #[test]
 fn test_can_add_team_rules() {
@@ -11,7 +11,7 @@ fn test_can_add_team_rules() {
     assert!(rules.can_add_team(engine.get_state()));
 
     // Should not be able to add teams after game starts
-    let mut engine = create_game_in_selecting_phase();
+    let engine = create_game_in_selecting_phase();
     assert!(!rules.can_add_team(engine.get_state()));
 }
 
