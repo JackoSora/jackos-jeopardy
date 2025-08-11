@@ -1,4 +1,4 @@
-use crate::domain::Team;
+use crate::core::Team;
 
 #[derive(Debug)]
 pub struct ScoringEngine;

@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{Board, Clue, SurpriseState, Team, UiMapping};
+use crate::core::{Board, Clue, SurpriseState, Team, UiMapping};
 use crate::game::events::EventState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

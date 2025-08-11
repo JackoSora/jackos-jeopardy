@@ -1,9 +1,6 @@
 mod app;
-mod config_ui;
-mod domain;
+mod core;
 mod game;
-mod game_ui;
-mod storage;
 mod theme;
 mod ui;
 

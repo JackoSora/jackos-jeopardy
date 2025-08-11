@@ -1,4 +1,4 @@
-use crate::domain::Team;
+use crate::core::Team;
 use crate::game::scoring::ScoringEngine;
 
 #[test]

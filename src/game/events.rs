@@ -273,7 +273,7 @@ pub struct HardResetEvent;
 
 impl HardResetEvent {
     /// Reset all team scores to zero
-    pub fn reset_all_scores(teams: &mut [crate::domain::Team]) {
+    pub fn reset_all_scores(teams: &mut [crate::core::Team]) {
         for team in teams.iter_mut() {
             team.score = 0;
         }
@@ -285,12 +285,12 @@ pub struct ReverseQuestionEvent;
 
 impl ReverseQuestionEvent {
     /// Swap question and answer for a clue
-    pub fn apply_to_clue(clue: &mut crate::domain::Clue) {
+    pub fn apply_to_clue(clue: &mut crate::core::Clue) {
         std::mem::swap(&mut clue.question, &mut clue.answer);
     }
 
     /// Restore original question and answer for a clue
-    pub fn restore_clue(clue: &mut crate::domain::Clue) {
+    pub fn restore_clue(clue: &mut crate::core::Clue) {
         // Since we swapped them, swapping again restores the original
         std::mem::swap(&mut clue.question, &mut clue.answer);
     }
@@ -299,7 +299,7 @@ impl ReverseQuestionEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Board, Category, Clue};
+    use crate::core::{Board, Category, Clue};
     use crate::game::{GameAction, GameEngine};
 
     #[test]

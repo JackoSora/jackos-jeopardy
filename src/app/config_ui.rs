@@ -2,7 +2,7 @@ use eframe::egui;
 
 use crate::theme::{self, Palette};
 
-use crate::domain::{Board, Category, ConfigState};
+use crate::core::{Board, Category, ConfigState};
 use crate::game::GameEngine;
 
 pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameEngine> {

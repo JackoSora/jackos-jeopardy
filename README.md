@@ -13,6 +13,14 @@ Run the game:
 
 (First build will take a few minutes to compile dependencies.)
 
+## Features
+
+- **Enhanced Cyberpunk Theme**: Dark theme with neon colors, dialogue-specific color palette, glow effects, and smooth animations
+- **Dynamic Events**: Special gameplay modifiers triggered automatically during play
+- **Advanced Visual Effects**: Gradient backgrounds, particle effects, smooth transitions, and performance-optimized rendering
+- **Team Management**: Support for multiple teams with comprehensive scoring system
+- **Save/Load**: Persistent game state with autosave and manual save functionality
+
 ## Rules
 
 Gameplay loop:

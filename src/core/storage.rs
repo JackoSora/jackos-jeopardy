@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::domain::Board;
+use crate::core::Board;
 use crate::game::GameState;
 
 

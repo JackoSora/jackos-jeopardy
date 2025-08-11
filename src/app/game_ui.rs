@@ -1,7 +1,7 @@
 use eframe::egui;
 
-use crate::app::AppMode;
-use crate::domain::Board;
+use crate::app::app::AppMode;
+use crate::core::Board;
 use crate::game::events::{EventAnimationController, EventAnimationType, GameEvent};
 use crate::game::{GameAction, GameActionResult, GameEngine, PlayPhase};
 use crate::theme::Palette;
@@ -263,7 +263,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
             PlayPhase::Finished => {
                 ui.label("Finished");
                 if crate::theme::secondary_button(ui, "Back to Config").clicked() {
-                    next_mode = Some(AppMode::Config(crate::domain::ConfigState {
+                    next_mode = Some(AppMode::Config(crate::core::ConfigState {
                         board: Board::default(),
                     }));
                 }

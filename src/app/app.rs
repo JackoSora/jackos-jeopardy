@@ -1,10 +1,10 @@
 use eframe::egui;
 
-use crate::config_ui;
-use crate::domain::{Board, ConfigState};
+use crate::app::config_ui;
+use crate::core::{Board, ConfigState};
 use crate::game::GameEngine;
-use crate::game_ui;
-use crate::storage::{self, Snapshot};
+use crate::app::game_ui;
+use crate::core::storage::{self, Snapshot};
 use crate::theme::{self, Palette};
 
 #[derive(Debug)]

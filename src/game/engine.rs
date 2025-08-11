@@ -1,4 +1,4 @@
-use crate::domain::Board;
+use crate::core::Board;
 use crate::game::actions::{GameAction, GameActionHandler, GameActionResult, GameError};
 use crate::game::state::{GameState, PlayPhase};
 
@@ -50,7 +50,7 @@ impl GameEngine {
         self.state.teams.iter().find(|t| t.id == team_id).map(|t| t.score)
     }
 
-    pub fn get_active_team(&self) -> Option<&crate::domain::Team> {
+    pub fn get_active_team(&self) -> Option<&crate::core::Team> {
         self.state.teams.iter().find(|t| t.id == self.state.active_team)
     }
 
@@ -70,7 +70,7 @@ impl GameEngine {
         available
     }
 
-    pub fn get_clue(&self, clue: (usize, usize)) -> Option<&crate::domain::Clue> {
+    pub fn get_clue(&self, clue: (usize, usize)) -> Option<&crate::core::Clue> {
         self.state.get_clue(clue)
     }
 
