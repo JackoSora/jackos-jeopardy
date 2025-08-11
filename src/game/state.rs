@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::{Board, Clue, SurpriseState, Team, UiMapping};
+use crate::game::events::EventState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlayPhase {
@@ -36,6 +37,8 @@ pub struct GameState {
     pub active_team: u32,
     pub surprise: SurpriseState,
     pub ui_map: UiMapping,
+    #[serde(default)]
+    pub event_state: EventState,
 }
 
 impl GameState {
@@ -48,6 +51,7 @@ impl GameState {
             active_team: 0,
             surprise: SurpriseState::default(),
             ui_map: UiMapping::identity(board.categories.len(), num_rows),
+            event_state: EventState::default(),
         }
     }
 

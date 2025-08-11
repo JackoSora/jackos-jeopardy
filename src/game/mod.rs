@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod engine;
+pub mod events;
 pub mod rules;
 pub mod scoring;
 pub mod state;

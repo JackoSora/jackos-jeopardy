@@ -2,6 +2,7 @@ use eframe::egui;
 
 use crate::app::AppMode;
 use crate::domain::Board;
+use crate::game::events::{EventAnimationController, EventAnimationType, GameEvent};
 use crate::game::{GameAction, GameActionResult, GameEngine, PlayPhase};
 use crate::theme::Palette;
 use crate::theme::{ModalButtonType, adjust_brightness, enhanced_modal_button};
@@ -55,6 +56,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
         let flash_id = ui.id().with("answer_flash");
         let pending_answer_id = ui.id().with("pending_answer");
         let pending_steal_id = ui.id().with("pending_steal");
+        let event_animation_id = ui.id().with("event_animation");
         let mut flash: Option<(AnswerFlash, Instant)> =
             ui.memory_mut(|m| m.data.get_temp(flash_id)).unwrap_or(None);
         let mut pending_answer: Option<(AnswerFlash, (usize, usize), u32)> = ui
@@ -62,6 +64,9 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
             .unwrap_or(None);
         let mut pending_steal: Option<(StealOutcome, (usize, usize), u32)> = ui
             .memory_mut(|m| m.data.get_temp(pending_steal_id))
+            .unwrap_or(None);
+        let mut event_animation: Option<EventAnimationController> = ui
+            .memory_mut(|m| m.data.get_temp(event_animation_id))
             .unwrap_or(None);
 
         match game_engine.get_phase() {
@@ -151,19 +156,35 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
 
                 // Handle clue selection outside the iteration
                 if let Some(clue) = clicked_clue {
-                    let action = GameAction::SelectClue {
-                        clue,
-                        team_id: *team_id,
-                    };
-                    if let Ok(result) = game_engine.handle_action(action) {
-                        match result {
-                            GameActionResult::Success { new_phase } => {
-                                requested_phase = Some(new_phase)
+                    // Check if there's a queued event that should play animation first
+                    if game_engine.get_state().event_state.has_queued_event()
+                        && !game_engine.get_state().event_state.is_animation_playing()
+                    {
+                        // Start the queued event animation instead of selecting the clue
+                        if let Some(queued_event) =
+                            game_engine.get_state().event_state.queued_event.clone()
+                        {
+                            let action = GameAction::PlayEventAnimation {
+                                event: queued_event,
+                            };
+                            let _ = game_engine.handle_action(action);
+                        }
+                    } else if !game_engine.get_state().event_state.is_animation_playing() {
+                        // Only allow clue selection if no animation is playing
+                        let action = GameAction::SelectClue {
+                            clue,
+                            team_id: *team_id,
+                        };
+                        if let Ok(result) = game_engine.handle_action(action) {
+                            match result {
+                                GameActionResult::Success { new_phase } => {
+                                    requested_phase = Some(new_phase)
+                                }
+                                GameActionResult::StateChanged { new_phase, .. } => {
+                                    requested_phase = Some(new_phase)
+                                }
+                                _ => {}
                             }
-                            GameActionResult::StateChanged { new_phase, .. } => {
-                                requested_phase = Some(new_phase)
-                            }
-                            _ => {}
                         }
                     }
                 }
@@ -361,12 +382,101 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
             ui.memory_mut(|m| m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id));
         }
 
+        // Handle event animations
+        if let Some(mut controller) = event_animation.take() {
+            if controller.update() {
+                // Animation completed - reset animation playing state
+                game_engine
+                    .get_state_mut()
+                    .event_state
+                    .set_animation_playing(false);
+                event_animation = None;
+            } else {
+                // Animation still running, render it
+                if let Some(animation_type) = controller.get_animation_type() {
+                    let elapsed = controller.animation_start.elapsed();
+                    let t = (elapsed.as_secs_f32() / controller.animation_duration.as_secs_f32())
+                        .clamp(0.0, 1.0);
+
+                    let ctx = ui.ctx();
+                    let rect = ctx.screen_rect();
+                    egui::Area::new("event_animation_overlay".into())
+                        .order(egui::Order::Foreground)
+                        .movable(false)
+                        .interactable(false)
+                        .fixed_pos(rect.min)
+                        .show(ctx, |ui| {
+                            let painter = ui.painter_at(rect);
+                            match animation_type {
+                                EventAnimationType::DoublePointsMultiplication => {
+                                    draw_double_points_animation(&painter, rect, t);
+                                }
+                                EventAnimationType::HardResetGlitch => {
+                                    draw_hard_reset_animation(&painter, rect, t);
+                                }
+                                EventAnimationType::ReverseQuestionFlip => {
+                                    draw_reverse_question_animation(&painter, rect, t);
+                                }
+                            }
+                        });
+
+                    ctx.request_repaint();
+                    event_animation = Some(controller);
+                }
+            }
+        }
+
+        // Check for new event animations from game effects
+        // This would be triggered by GameEffect::EventAnimation
+        if event_animation.is_none() {
+            // Check if there's a queued event that should trigger an animation
+            if game_engine.get_state().event_state.has_queued_event()
+                && !game_engine.get_state().event_state.is_animation_playing()
+            {
+                if let Some(queued_event) = game_engine.get_state().event_state.queued_event.clone()
+                {
+                    let mut controller = EventAnimationController::new();
+                    let duration = match queued_event {
+                        GameEvent::DoublePoints => Duration::from_millis(3000),
+                        GameEvent::HardReset => Duration::from_millis(4000),
+                        GameEvent::ReverseQuestion => Duration::from_millis(2500),
+                    };
+                    controller.start_animation(queued_event.clone(), duration);
+
+                    // Mark animation as playing and consume the queued event
+                    game_engine
+                        .get_state_mut()
+                        .event_state
+                        .set_animation_playing(true);
+                    let _ = game_engine.get_state_mut().event_state.take_queued_event();
+
+                    // For non-Hard Reset events, activate them now for the next cell
+                    if !matches!(queued_event, GameEvent::HardReset) {
+                        game_engine
+                            .get_state_mut()
+                            .event_state
+                            .activate_event(queued_event);
+                    }
+
+                    event_animation = Some(controller);
+                }
+            }
+        }
+
         // Persist pending answer and steal if still waiting (flash active)
         if pending_answer.is_some() {
             ui.memory_mut(|m| m.data.insert_temp(pending_answer_id, pending_answer));
         }
         if pending_steal.is_some() {
             ui.memory_mut(|m| m.data.insert_temp(pending_steal_id, pending_steal));
+        }
+        if let Some(controller) = event_animation {
+            ui.memory_mut(|m| m.data.insert_temp(event_animation_id, Some(controller)));
+        } else {
+            ui.memory_mut(|m| {
+                m.data
+                    .remove::<Option<EventAnimationController>>(event_animation_id)
+            });
         }
     });
     next_mode
@@ -841,6 +951,276 @@ fn draw_failure_animation(painter: &egui::Painter, rect: egui::Rect, t: f32) {
             let wave_alpha = ((1.0 - wave_t) * 80.0) as u8;
             let wave_color = egui::Color32::from_rgba_unmultiplied(255, 40, 80, wave_alpha);
             painter.circle_stroke(center, wave_radius, egui::Stroke::new(2.0, wave_color));
+        }
+    }
+}
+fn draw_double_points_animation(painter: &egui::Painter, rect: egui::Rect, t: f32) {
+    let center = rect.center();
+
+    // Easing functions
+    let ease_out = 1.0 - (1.0 - t).powf(3.0);
+    let ease_in_out = if t < 0.5 {
+        2.0 * t * t
+    } else {
+        1.0 - 2.0 * (1.0 - t).powf(2.0)
+    };
+
+    // Cyan/blue color scheme with pulsing effects
+    let base_alpha = ((0.7 - ease_out * 0.5) * 255.0) as u8;
+    let base_color = egui::Color32::from_rgba_unmultiplied(0, 200, 255, base_alpha);
+    painter.rect_filled(rect, 0.0, base_color);
+
+    // Multiplication symbol (×2) in the center
+    let text_size = 120.0 + ease_in_out * 40.0;
+    let text_alpha = ((1.0 - ease_out * 0.3) * 255.0) as u8;
+    let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, text_alpha);
+
+    // Draw "×2" text
+    let font_id = egui::FontId::proportional(text_size);
+    let text = "×2";
+    let galley = painter.layout_no_wrap(text.to_string(), font_id, text_color);
+    let text_pos = center - galley.size() / 2.0;
+    painter.galley(text_pos, galley, text_color);
+
+    // Energy bursts around the multiplication symbol
+    let burst_count = 8;
+    for i in 0..burst_count {
+        let angle = (i as f32 / burst_count as f32) * 2.0 * std::f32::consts::PI + t * 2.0;
+        let burst_t = (t * 2.0 - i as f32 * 0.1).clamp(0.0, 1.0);
+
+        if burst_t > 0.0 {
+            let length = ease_out * 150.0;
+            let start_radius = 80.0;
+            let end_radius = start_radius + length;
+
+            let start = center + egui::Vec2::angled(angle) * start_radius;
+            let end = center + egui::Vec2::angled(angle) * end_radius;
+
+            let burst_alpha = ((1.0 - burst_t) * 200.0) as u8;
+            let burst_color = egui::Color32::from_rgba_unmultiplied(0, 255, 255, burst_alpha);
+            painter.line_segment([start, end], egui::Stroke::new(6.0, burst_color));
+        }
+    }
+
+    // Pulsing rings
+    for i in 0..3 {
+        let ring_t = (t * 1.5 - i as f32 * 0.2).clamp(0.0, 1.0);
+        if ring_t > 0.0 {
+            let ring_radius = ease_out * (200.0 + i as f32 * 50.0);
+            let ring_alpha = ((1.0 - ring_t) * 150.0) as u8;
+            let ring_color = match i {
+                0 => egui::Color32::from_rgba_unmultiplied(0, 255, 255, ring_alpha),
+                1 => egui::Color32::from_rgba_unmultiplied(100, 200, 255, ring_alpha),
+                _ => egui::Color32::from_rgba_unmultiplied(200, 220, 255, ring_alpha),
+            };
+            painter.circle_stroke(center, ring_radius, egui::Stroke::new(4.0, ring_color));
+        }
+    }
+
+    // Scaling point value particles
+    for i in 0..12 {
+        let particle_t = (t * 2.0 - i as f32 * 0.05).clamp(0.0, 1.0);
+        if particle_t > 0.0 {
+            let angle = (i as f32 / 12.0) * 2.0 * std::f32::consts::PI;
+            let radius = ease_out * 250.0;
+            let pos = center + egui::Vec2::angled(angle) * radius;
+
+            let particle_alpha = ((1.0 - particle_t) * 255.0) as u8;
+            let particle_size = (1.0 - particle_t) * 12.0 + 4.0;
+            let particle_color =
+                egui::Color32::from_rgba_unmultiplied(255, 255, 255, particle_alpha);
+            painter.circle_filled(pos, particle_size, particle_color);
+        }
+    }
+}
+
+fn draw_hard_reset_animation(painter: &egui::Painter, rect: egui::Rect, t: f32) {
+    let center = rect.center();
+
+    // Easing functions
+    let ease_out = 1.0 - (1.0 - t).powf(3.0);
+    let ease_in_out = if t < 0.5 {
+        2.0 * t * t
+    } else {
+        1.0 - 2.0 * (1.0 - t).powf(2.0)
+    };
+
+    // Red error colors transitioning to normal
+    let base_alpha = if t < 0.7 {
+        ((0.8 - t * 0.5) * 255.0) as u8
+    } else {
+        ((0.8 - 0.7 * 0.5) * (1.0 - (t - 0.7) / 0.3) * 255.0) as u8
+    };
+    let base_color = egui::Color32::from_rgba_unmultiplied(255, 0, 50, base_alpha);
+    painter.rect_filled(rect, 0.0, base_color);
+
+    // Screen glitching effect
+    if t < 0.6 {
+        let glitch_intensity = (0.6 - t) / 0.6;
+        for i in 0..20 {
+            let y = (i as f32 / 20.0) * rect.height() + rect.min.y;
+            let glitch_offset = (glitch_intensity * 50.0 * (t * 10.0 + i as f32).sin()) as f32;
+            let glitch_rect = egui::Rect::from_min_size(
+                egui::Pos2::new(rect.min.x + glitch_offset, y),
+                egui::Vec2::new(rect.width(), rect.height() / 20.0),
+            );
+            let glitch_alpha = (glitch_intensity * 100.0) as u8;
+            let glitch_color = egui::Color32::from_rgba_unmultiplied(255, 100, 100, glitch_alpha);
+            painter.rect_filled(glitch_rect, 0.0, glitch_color);
+        }
+    }
+
+    // "RESET" text with glitch effect
+    let text_size = 100.0 + ease_in_out * 20.0;
+    let text_alpha = ((1.0 - ease_out * 0.2) * 255.0) as u8;
+    let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, text_alpha);
+
+    let font_id = egui::FontId::proportional(text_size);
+    let text = "RESET";
+    let galley = painter.layout_no_wrap(text.to_string(), font_id, text_color);
+    let text_pos = center - galley.size() / 2.0;
+    painter.galley(text_pos, galley, text_color);
+
+    // Digital artifacts and static
+    for i in 0..30 {
+        let artifact_t = (t * 3.0 - i as f32 * 0.05).clamp(0.0, 1.0);
+        if artifact_t > 0.0 {
+            let x = (i as f32 * 123.456).fract() * rect.width() + rect.min.x;
+            let y = (i as f32 * 789.123).fract() * rect.height() + rect.min.y;
+            let size = (1.0 - artifact_t) * 8.0 + 2.0;
+
+            let artifact_alpha = ((1.0 - artifact_t) * 200.0) as u8;
+            let artifact_color =
+                egui::Color32::from_rgba_unmultiplied(255, 255, 255, artifact_alpha);
+            painter.rect_filled(
+                egui::Rect::from_center_size(egui::Pos2::new(x, y), egui::Vec2::splat(size)),
+                0.0,
+                artifact_color,
+            );
+        }
+    }
+
+    // System reboot sequence lines
+    if t > 0.3 {
+        let line_t = ((t - 0.3) / 0.7).clamp(0.0, 1.0);
+        for i in 0..5 {
+            let line_progress = (line_t * 5.0 - i as f32).clamp(0.0, 1.0);
+            if line_progress > 0.0 {
+                let y = center.y + (i as f32 - 2.0) * 30.0;
+                let line_width = line_progress * rect.width() * 0.8;
+                let line_start = egui::Pos2::new(center.x - line_width / 2.0, y);
+                let line_end = egui::Pos2::new(center.x + line_width / 2.0, y);
+
+                let line_alpha = (line_progress * 255.0) as u8;
+                let line_color = egui::Color32::from_rgba_unmultiplied(0, 255, 100, line_alpha);
+                painter.line_segment([line_start, line_end], egui::Stroke::new(3.0, line_color));
+            }
+        }
+    }
+}
+
+fn draw_reverse_question_animation(painter: &egui::Painter, rect: egui::Rect, t: f32) {
+    let center = rect.center();
+
+    // Easing functions
+    let ease_out = 1.0 - (1.0 - t).powf(3.0);
+    let ease_in_out = if t < 0.5 {
+        2.0 * t * t
+    } else {
+        1.0 - 2.0 * (1.0 - t).powf(2.0)
+    };
+
+    // Purple/magenta color scheme
+    let base_alpha = ((0.6 - ease_out * 0.3) * 255.0) as u8;
+    let base_color = egui::Color32::from_rgba_unmultiplied(150, 0, 255, base_alpha);
+    painter.rect_filled(rect, 0.0, base_color);
+
+    // Flowing data streams
+    for i in 0..8 {
+        let stream_t = (t * 2.0 - i as f32 * 0.1).clamp(0.0, 1.0);
+        if stream_t > 0.0 {
+            let angle = (i as f32 / 8.0) * 2.0 * std::f32::consts::PI;
+            let stream_length = ease_out * 300.0;
+
+            for j in 0..10 {
+                let segment_t = (stream_t * 10.0 - j as f32).clamp(0.0, 1.0);
+                if segment_t > 0.0 {
+                    let radius = 100.0 + j as f32 * 20.0;
+                    let pos = center + egui::Vec2::angled(angle + t * 0.5) * radius;
+
+                    let segment_alpha = (segment_t * 150.0) as u8;
+                    let segment_size = segment_t * 6.0 + 2.0;
+                    let segment_color =
+                        egui::Color32::from_rgba_unmultiplied(255, 100, 255, segment_alpha);
+                    painter.circle_filled(pos, segment_size, segment_color);
+                }
+            }
+        }
+    }
+
+    // Flipping text effect - show "?" and "!" symbols
+    let flip_progress = ease_in_out;
+    let text_size = 80.0;
+    let text_alpha = ((1.0 - ease_out * 0.2) * 255.0) as u8;
+    let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, text_alpha);
+
+    // Rotation effect for the symbols
+    let rotation = flip_progress * std::f32::consts::PI;
+
+    let font_id = egui::FontId::proportional(text_size);
+    let question_text = "?";
+    let exclamation_text = "!";
+
+    // Draw question mark (fading out)
+    if flip_progress < 0.5 {
+        let q_alpha = ((1.0 - flip_progress * 2.0) * text_alpha as f32) as u8;
+        let q_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, q_alpha);
+        let galley = painter.layout_no_wrap(question_text.to_string(), font_id.clone(), q_color);
+        let text_pos = center - galley.size() / 2.0;
+        painter.galley(text_pos, galley, q_color);
+    }
+
+    // Draw exclamation mark (fading in)
+    if flip_progress > 0.5 {
+        let e_alpha = (((flip_progress - 0.5) * 2.0) * text_alpha as f32) as u8;
+        let e_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, e_alpha);
+        let galley = painter.layout_no_wrap(exclamation_text.to_string(), font_id, e_color);
+        let text_pos = center - galley.size() / 2.0;
+        painter.galley(text_pos, galley, e_color);
+    }
+
+    // Holographic distortion effects
+    for i in 0..6 {
+        let distortion_t = (t * 1.8 - i as f32 * 0.15).clamp(0.0, 1.0);
+        if distortion_t > 0.0 {
+            let angle = (i as f32 / 6.0) * 2.0 * std::f32::consts::PI + t * 1.5;
+            let radius = ease_out * (150.0 + i as f32 * 30.0);
+            let pos = center + egui::Vec2::angled(angle) * radius;
+
+            let distortion_alpha = ((1.0 - distortion_t) * 120.0) as u8;
+            let distortion_size = (1.0 - distortion_t) * 15.0 + 5.0;
+            let distortion_color =
+                egui::Color32::from_rgba_unmultiplied(255, 0, 255, distortion_alpha);
+            painter.circle_stroke(
+                pos,
+                distortion_size,
+                egui::Stroke::new(2.0, distortion_color),
+            );
+        }
+    }
+
+    // Mirror effects - vertical lines that simulate reflection
+    for i in 0..10 {
+        let mirror_t = (t * 2.5 - i as f32 * 0.1).clamp(0.0, 1.0);
+        if mirror_t > 0.0 {
+            let x = rect.min.x + (i as f32 / 10.0) * rect.width();
+            let line_height = mirror_t * rect.height();
+            let line_start = egui::Pos2::new(x, center.y - line_height / 2.0);
+            let line_end = egui::Pos2::new(x, center.y + line_height / 2.0);
+
+            let mirror_alpha = ((1.0 - mirror_t) * 80.0) as u8;
+            let mirror_color = egui::Color32::from_rgba_unmultiplied(200, 100, 255, mirror_alpha);
+            painter.line_segment([line_start, line_end], egui::Stroke::new(1.0, mirror_color));
         }
     }
 }

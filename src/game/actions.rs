@@ -1,3 +1,4 @@
+use crate::game::events::{EventAnimationType, EventError, GameEvent};
 use crate::game::rules::GameRules;
 use crate::game::scoring::ScoringEngine;
 use crate::game::state::PlayPhase;
@@ -29,6 +30,17 @@ pub enum GameAction {
         clue: (usize, usize),
         next_team_id: u32,
     },
+    QueueEvent {
+        event: GameEvent,
+    },
+    PlayEventAnimation {
+        event: GameEvent,
+    },
+    TriggerEvent {
+        event: GameEvent,
+    },
+    AcknowledgeEvent,
+    ResolveEvent,
     ReturnToConfig,
 }
 
@@ -49,6 +61,12 @@ pub enum GameEffect {
     ClueRevealed { clue: (usize, usize) },
     ClueSolved { clue: (usize, usize) },
     FlashEffect { effect_type: FlashType },
+    EventTriggered { event: GameEvent },
+    EventQueued { event: GameEvent },
+    EventAnimation { animation_type: EventAnimationType },
+    ScoreReset,
+    DoublePointsActivated,
+    ReverseQuestionActivated,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -60,6 +78,7 @@ pub enum FlashType {
 #[derive(Debug, Clone)]
 pub enum GameError {
     InvalidAction { action: String, reason: String },
+    EventError(EventError),
 }
 
 #[derive(Debug)]
@@ -101,6 +120,13 @@ impl GameActionHandler {
             GameAction::CloseClue { clue, next_team_id } => {
                 self.handle_close_clue(state, clue, next_team_id)
             }
+            GameAction::QueueEvent { event } => self.handle_queue_event(state, event),
+            GameAction::PlayEventAnimation { event } => {
+                self.handle_play_event_animation(state, event)
+            }
+            GameAction::TriggerEvent { event } => self.handle_trigger_event(state, event),
+            GameAction::AcknowledgeEvent => self.handle_acknowledge_event(state),
+            GameAction::ResolveEvent => self.handle_resolve_event(state),
             GameAction::ReturnToConfig => self.handle_return_to_config(state),
         }
     }
@@ -161,13 +187,33 @@ impl GameActionHandler {
             });
         }
 
+        let mut effects = Vec::new();
+
+        // If Reverse Question event is active, swap question and answer
+        if state
+            .event_state
+            .is_event_active(&GameEvent::ReverseQuestion)
+        {
+            if let Some(category) = state.board.categories.get_mut(clue.0) {
+                if let Some(c) = category.clues.get_mut(clue.1) {
+                    use crate::game::events::ReverseQuestionEvent;
+                    ReverseQuestionEvent::apply_to_clue(c);
+                    effects.push(GameEffect::ReverseQuestionActivated);
+                }
+            }
+        }
+
         let new_phase = PlayPhase::Showing {
             clue,
             owner_team_id: team_id,
         };
         state.phase = new_phase.clone();
 
-        Ok(GameActionResult::Success { new_phase })
+        if effects.is_empty() {
+            Ok(GameActionResult::Success { new_phase })
+        } else {
+            Ok(GameActionResult::StateChanged { new_phase, effects })
+        }
     }
 
     fn handle_answer_correct(
@@ -194,15 +240,35 @@ impl GameActionHandler {
                 effects.push(GameEffect::ClueRevealed { clue });
                 effects.push(GameEffect::ClueSolved { clue });
 
+                // Calculate points (double if Double Points event is active)
+                let points = if state.event_state.is_event_active(&GameEvent::DoublePoints) {
+                    use crate::game::events::DoublePointsEvent;
+                    DoublePointsEvent::calculate_points(c.points) as i32
+                } else {
+                    c.points as i32
+                };
+
                 // Award points to team
-                if self
-                    .scoring
-                    .award_points(&mut state.teams, team_id, c.points as i32)
-                {
+                if self.scoring.award_points(&mut state.teams, team_id, points) {
                     effects.push(GameEffect::ScoreChanged {
                         team_id,
-                        delta: c.points as i32,
+                        delta: points,
                     });
+                }
+
+                // If this was a double points question, resolve the event
+                if state.event_state.is_event_active(&GameEvent::DoublePoints) {
+                    state.event_state.deactivate_event();
+                }
+
+                // If this was a reverse question, restore the clue and resolve the event
+                if state
+                    .event_state
+                    .is_event_active(&GameEvent::ReverseQuestion)
+                {
+                    use crate::game::events::ReverseQuestionEvent;
+                    ReverseQuestionEvent::restore_clue(c);
+                    state.event_state.deactivate_event();
                 }
             }
         }
@@ -236,16 +302,23 @@ impl GameActionHandler {
 
         let mut effects = Vec::new();
 
-        // Deduct points from team
+        // Deduct points from team (double penalty if Double Points event is active)
         if let Some(category) = state.board.categories.get(clue.0) {
             if let Some(c) = category.clues.get(clue.1) {
+                let penalty = if state.event_state.is_event_active(&GameEvent::DoublePoints) {
+                    use crate::game::events::DoublePointsEvent;
+                    DoublePointsEvent::calculate_penalty(c.points)
+                } else {
+                    c.points as i32
+                };
+
                 if self
                     .scoring
-                    .deduct_points(&mut state.teams, team_id, c.points as i32)
+                    .deduct_points(&mut state.teams, team_id, penalty)
                 {
                     effects.push(GameEffect::ScoreChanged {
                         team_id,
-                        delta: -(c.points as i32),
+                        delta: -penalty,
                     });
                 }
             }
@@ -307,15 +380,36 @@ impl GameActionHandler {
                         effects.push(GameEffect::ClueRevealed { clue });
                         effects.push(GameEffect::ClueSolved { clue });
 
-                        // Award points to stealing team
-                        if self
-                            .scoring
-                            .award_points(&mut state.teams, team_id, c.points as i32)
+                        // Calculate points (double if Double Points event is active)
+                        let points = if state.event_state.is_event_active(&GameEvent::DoublePoints)
                         {
+                            use crate::game::events::DoublePointsEvent;
+                            DoublePointsEvent::calculate_points(c.points) as i32
+                        } else {
+                            c.points as i32
+                        };
+
+                        // Award points to stealing team
+                        if self.scoring.award_points(&mut state.teams, team_id, points) {
                             effects.push(GameEffect::ScoreChanged {
                                 team_id,
-                                delta: c.points as i32,
+                                delta: points,
                             });
+                        }
+
+                        // If this was a double points question, resolve the event
+                        if state.event_state.is_event_active(&GameEvent::DoublePoints) {
+                            state.event_state.deactivate_event();
+                        }
+
+                        // If this was a reverse question, restore the clue and resolve the event
+                        if state
+                            .event_state
+                            .is_event_active(&GameEvent::ReverseQuestion)
+                        {
+                            use crate::game::events::ReverseQuestionEvent;
+                            ReverseQuestionEvent::restore_clue(c);
+                            state.event_state.deactivate_event();
                         }
                     }
                 }
@@ -346,6 +440,16 @@ impl GameActionHandler {
                     // No more teams, mark clue as solved without points
                     if let Some(category) = state.board.categories.get_mut(clue.0) {
                         if let Some(c) = category.clues.get_mut(clue.1) {
+                            // If this was a reverse question, restore the clue before marking as solved
+                            if state
+                                .event_state
+                                .is_event_active(&GameEvent::ReverseQuestion)
+                            {
+                                use crate::game::events::ReverseQuestionEvent;
+                                ReverseQuestionEvent::restore_clue(c);
+                                state.event_state.deactivate_event();
+                            }
+
                             c.solved = true;
                             effects.push(GameEffect::ClueSolved { clue });
                         }
@@ -382,12 +486,171 @@ impl GameActionHandler {
             });
         }
 
+        // Increment question count for event system
+        state.event_state.increment_question_count();
+
+        let mut effects = Vec::new();
+
+        // Check if an event should be triggered
+        if state.event_state.should_trigger_event() {
+            // Select a random event
+            use crate::game::events::EventConfig;
+            let config = EventConfig::default();
+
+            if let Some(event) = config.get_random_event() {
+                // Queue the event for animation during transition
+                state.event_state.queue_event(event.clone());
+
+                // Apply immediate effects for Hard Reset
+                if matches!(event, GameEvent::HardReset) {
+                    // Reset all team scores immediately
+                    for team in &mut state.teams {
+                        team.score = 0;
+                    }
+                    effects.push(GameEffect::ScoreReset);
+                }
+
+                effects.push(GameEffect::EventQueued { event });
+            }
+        }
+
         let new_phase = PlayPhase::Selecting {
             team_id: next_team_id,
         };
         state.phase = new_phase.clone();
 
-        Ok(GameActionResult::Success { new_phase })
+        if effects.is_empty() {
+            Ok(GameActionResult::Success { new_phase })
+        } else {
+            Ok(GameActionResult::StateChanged { new_phase, effects })
+        }
+    }
+
+    fn handle_queue_event(
+        &self,
+        state: &mut crate::game::state::GameState,
+        event: GameEvent,
+    ) -> Result<GameActionResult, GameError> {
+        // Queue the event for animation during transition
+        state.event_state.queue_event(event.clone());
+
+        let mut effects = vec![GameEffect::EventQueued {
+            event: event.clone(),
+        }];
+
+        // Apply immediate effects for Hard Reset
+        if matches!(event, GameEvent::HardReset) {
+            // Reset all team scores immediately
+            for team in &mut state.teams {
+                team.score = 0;
+            }
+            effects.push(GameEffect::ScoreReset);
+        }
+
+        Ok(GameActionResult::StateChanged {
+            new_phase: state.phase.clone(),
+            effects,
+        })
+    }
+
+    fn handle_play_event_animation(
+        &self,
+        state: &mut crate::game::state::GameState,
+        event: GameEvent,
+    ) -> Result<GameActionResult, GameError> {
+        // Set animation playing state
+        state.event_state.set_animation_playing(true);
+
+        // For non-Hard Reset events, activate them now for the next cell
+        if !matches!(event, GameEvent::HardReset) {
+            state.event_state.activate_event(event.clone());
+        }
+
+        let effects = vec![GameEffect::EventAnimation {
+            animation_type: match event {
+                GameEvent::DoublePoints => EventAnimationType::DoublePointsMultiplication,
+                GameEvent::HardReset => EventAnimationType::HardResetGlitch,
+                GameEvent::ReverseQuestion => EventAnimationType::ReverseQuestionFlip,
+            },
+        }];
+
+        Ok(GameActionResult::StateChanged {
+            new_phase: state.phase.clone(),
+            effects,
+        })
+    }
+
+    fn handle_trigger_event(
+        &self,
+        state: &mut crate::game::state::GameState,
+        event: GameEvent,
+    ) -> Result<GameActionResult, GameError> {
+        // Check if an event is already active
+        if state.event_state.active_event.is_some() {
+            return Err(GameError::EventError(EventError::EventAlreadyActive));
+        }
+
+        // Activate the event
+        state.event_state.activate_event(event.clone());
+
+        let mut effects = vec![
+            GameEffect::EventTriggered {
+                event: event.clone(),
+            },
+            GameEffect::EventAnimation {
+                animation_type: match event {
+                    GameEvent::DoublePoints => EventAnimationType::DoublePointsMultiplication,
+                    GameEvent::HardReset => EventAnimationType::HardResetGlitch,
+                    GameEvent::ReverseQuestion => EventAnimationType::ReverseQuestionFlip,
+                },
+            },
+        ];
+
+        // Apply immediate event effects
+        match event {
+            GameEvent::HardReset => {
+                // Reset all team scores immediately
+                for team in &mut state.teams {
+                    team.score = 0;
+                }
+                effects.push(GameEffect::ScoreReset);
+            }
+            GameEvent::DoublePoints => {
+                effects.push(GameEffect::DoublePointsActivated);
+            }
+            GameEvent::ReverseQuestion => {
+                effects.push(GameEffect::ReverseQuestionActivated);
+            }
+        }
+
+        Ok(GameActionResult::StateChanged {
+            new_phase: state.phase.clone(),
+            effects,
+        })
+    }
+
+    fn handle_acknowledge_event(
+        &self,
+        state: &mut crate::game::state::GameState,
+    ) -> Result<GameActionResult, GameError> {
+        // This is called when the user acknowledges the event announcement
+        // The event remains active but the animation phase is complete
+        Ok(GameActionResult::Success {
+            new_phase: state.phase.clone(),
+        })
+    }
+
+    fn handle_resolve_event(
+        &self,
+        state: &mut crate::game::state::GameState,
+    ) -> Result<GameActionResult, GameError> {
+        // This is called when the event effect should be removed
+        // (e.g., after the double points question is answered)
+        state.event_state.deactivate_event();
+
+        Ok(GameActionResult::Success {
+            new_phase: state.phase.clone(),
+        })
     }
 
     fn handle_return_to_config(

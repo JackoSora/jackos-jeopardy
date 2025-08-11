@@ -55,7 +55,7 @@ impl GameRules {
         VecDeque::from(others)
     }
 
-    // API methods for tests  
+    // API methods for tests
     pub fn is_game_finished(&self, state: &GameState) -> bool {
         for category in &state.board.categories {
             for clue in &category.clues {
@@ -90,7 +90,6 @@ impl GameRules {
         }
         actions
     }
-
 
     /// Validate if a team can perform a specific action
     pub fn validate_team_action(
@@ -157,13 +156,32 @@ impl GameRules {
                 // Anyone can close a clue in resolved phase
                 matches!(state.phase, PlayPhase::Resolved { .. })
             }
+            GameAction::TriggerEvent { .. } => {
+                // Events can be triggered when no event is active
+                state.event_state.active_event.is_none()
+            }
+            GameAction::AcknowledgeEvent => {
+                // Can acknowledge when an event is active
+                state.event_state.active_event.is_some()
+            }
+            GameAction::ResolveEvent => {
+                // Can resolve when an event is active
+                state.event_state.active_event.is_some()
+            }
+            GameAction::QueueEvent { .. } => {
+                // Event queuing is handled internally
+                false
+            }
+            GameAction::PlayEventAnimation { .. } => {
+                // Event animations are handled internally
+                false
+            }
             GameAction::ReturnToConfig => {
                 // Anyone can return to config
                 true
             }
         }
     }
-
 
     /// Check if a specific action is valid in the current state
     pub fn is_action_valid(&self, state: &GameState, action: &GameAction) -> bool {
@@ -198,6 +216,20 @@ impl GameRules {
             GameAction::CloseClue { .. } => {
                 matches!(state.phase, PlayPhase::Resolved { .. })
             }
+            GameAction::TriggerEvent { .. } => {
+                // Events can be triggered when no event is active
+                state.event_state.active_event.is_none()
+            }
+            GameAction::AcknowledgeEvent => {
+                // Can acknowledge when an event is active
+                state.event_state.active_event.is_some()
+            }
+            GameAction::ResolveEvent => {
+                // Can resolve when an event is active
+                state.event_state.active_event.is_some()
+            }
+            GameAction::QueueEvent { .. } => false,
+            GameAction::PlayEventAnimation { .. } => false,
             GameAction::ReturnToConfig => true,
         }
     }

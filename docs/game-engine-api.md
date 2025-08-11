@@ -19,6 +19,9 @@ pub enum GameAction {
     AnswerIncorrect { clue: (usize, usize), team_id: u32 },
     StealAttempt { clue: (usize, usize), team_id: u32, correct: bool },
     CloseClue { clue: (usize, usize), next_team_id: u32 },
+    TriggerEvent { event: GameEvent },
+    AcknowledgeEvent,
+    ResolveEvent,
     ReturnToConfig,
 }
 ```
@@ -40,10 +43,82 @@ pub enum GameEffect {
     ScoreChanged { team_id: u32, delta: i32 },
     ClueRevealed { clue: (usize, usize) },
     ClueSolved { clue: (usize, usize) },
-    TeamRotated { new_active_team: u32 },
     FlashEffect { effect_type: FlashType },
+    EventTriggered { event: GameEvent },
+    EventAnimation { animation_type: EventAnimationType },
+    ScoreReset,
+    DoublePointsActivated,
+    ReverseQuestionActivated,
 }
 ```
+
+## Event System
+
+The game includes a dynamic event system that triggers special gameplay modifiers every 4 questions. Events add excitement and strategic depth to the game. The event system is fully integrated into the game state with backward compatibility for existing save files and includes sophisticated animation timing control.
+
+### Event Types
+```rust
+pub enum GameEvent {
+    DoublePoints,    // Next correct answer awards double points, incorrect loses double
+    HardReset,       // All team scores reset to zero immediately
+    ReverseQuestion, // Next clue has question and answer swapped
+}
+```
+
+### Event State Management
+The event system tracks questions answered and manages active events:
+```rust
+pub struct EventState {
+    pub questions_answered: u32,
+    pub active_event: Option<GameEvent>,
+    pub event_history: Vec<GameEvent>,
+}
+```
+
+### Game State Integration
+The event system is integrated into the main game state with backward compatibility:
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameState {
+    // ... other fields
+    #[serde(default)]  // Backward compatibility with old save files
+    pub event_state: EventState,
+}
+```
+
+### Event Animations
+Events include visual animations with different phases:
+```rust
+pub enum EventAnimationType {
+    DoublePointsMultiplication, // Cyan/blue with scaling effects (3s)
+    HardResetGlitch,           // Red glitch with screen distortion (4s)
+    ReverseQuestionFlip,       // Purple with data stream reversal (2.5s)
+}
+
+pub enum AnimationPhase {
+    Intro,  // 0-20% of animation
+    Main,   // 20-80% of animation  
+    Outro,  // 80-100% of animation
+}
+```
+
+### Event Integration
+Events are automatically triggered when:
+- Question count reaches multiples of 4 (4, 8, 12, etc.)
+- No event is currently active or queued
+- Random selection from available event types
+
+Event effects are applied during gameplay:
+- **Double Points**: Modifies scoring for the next question only
+- **Hard Reset**: Immediately resets all team scores to zero
+- **Reverse Question**: Swaps question/answer text for the next selected clue
+
+### Event Timing and Animation
+Events use a sophisticated queuing system:
+- Events are queued when triggered, not immediately activated
+- Animations play during the transition period between cell dialogues
+- Interaction blocking prevents cell selection during animations
+- Different events have different activation timing (immediate vs. next cell)
 
 ## API Reference
 
@@ -118,6 +193,24 @@ pub fn get_available_clues(&self) -> Vec<(usize, usize)>
 pub fn get_clue(&self, clue: (usize, usize)) -> Option<&Clue>
 ```
 
+### Event Operations
+```rust
+/// Get the current event state
+pub fn get_event_state(&self) -> &EventState
+
+/// Check if a specific event is currently active
+pub fn is_event_active(&self, event: &GameEvent) -> bool
+
+/// Get the number of questions answered (for event triggering)
+pub fn get_questions_answered(&self) -> u32
+
+/// Get the event history
+pub fn get_event_history(&self) -> &Vec<GameEvent>
+
+/// Check if an event should be triggered
+pub fn should_trigger_event(&self) -> bool
+```
+
 ### Game Lifecycle
 ```rust
 /// Reset the game to initial state with the same board
@@ -150,7 +243,7 @@ engine.handle_action(GameAction::SelectClue { clue: (0, 0), team_id })?;
 engine.handle_action(GameAction::AnswerCorrect { clue: (0, 0), team_id })?;
 ```
 
-### Action Validation
+### Action Validation with Event Handling
 ```rust
 let action = GameAction::SelectClue { clue: (0, 0), team_id: 1 };
 
@@ -167,6 +260,26 @@ if engine.can_perform_action(&action) {
                     GameEffect::FlashEffect { effect_type } => {
                         // Trigger visual flash
                     }
+                    GameEffect::EventTriggered { event } => {
+                        // Show event announcement overlay
+                        show_event_announcement(event);
+                    }
+                    GameEffect::EventAnimation { animation_type } => {
+                        // Start event animation
+                        start_event_animation(animation_type);
+                    }
+                    GameEffect::ScoreReset => {
+                        // Update all team score displays to zero
+                        reset_score_displays();
+                    }
+                    GameEffect::DoublePointsActivated => {
+                        // Show double points indicator
+                        show_double_points_indicator();
+                    }
+                    GameEffect::ReverseQuestionActivated => {
+                        // Show reverse question indicator
+                        show_reverse_question_indicator();
+                    }
                     // ... handle other effects
                 }
             }
@@ -177,7 +290,7 @@ if engine.can_perform_action(&action) {
 }
 ```
 
-### State Queries
+### State Queries with Event System
 ```rust
 // Check game status
 if engine.is_game_finished() {
@@ -195,6 +308,32 @@ for action in available_actions {
 if let Some(team) = engine.get_active_team() {
     println!("Active team: {} (Score: {})", team.name, team.score);
 }
+
+// Check event system status
+let event_state = engine.get_event_state();
+println!("Questions answered: {}", event_state.questions_answered);
+
+if let Some(active_event) = &event_state.active_event {
+    match active_event {
+        GameEvent::DoublePoints => {
+            // Show double points indicator in UI
+            show_double_points_ui();
+        }
+        GameEvent::ReverseQuestion => {
+            // Show reverse question indicator in UI
+            show_reverse_question_ui();
+        }
+        GameEvent::HardReset => {
+            // Event is instantaneous, no persistent UI needed
+        }
+    }
+}
+
+// Check if event should trigger soon
+if engine.should_trigger_event() {
+    // Show "Event incoming!" indicator
+    show_event_warning();
+}
 ```
 
 ## Error Handling
@@ -204,11 +343,14 @@ The GameEngine uses typed errors for comprehensive error handling:
 ```rust
 pub enum GameError {
     InvalidAction { action: String, reason: String },
-    InvalidTeam { team_id: u32 },
-    InvalidClue { clue: (usize, usize) },
-    GameNotStarted,
-    GameFinished,
-    InsufficientTeams,
+    EventError(EventError),
+}
+
+pub enum EventError {
+    NoEventAvailable,
+    EventAlreadyActive,
+    InvalidEventState,
+    AnimationFailed { reason: String },
 }
 ```
 
@@ -220,10 +362,22 @@ match engine.handle_action(action) {
         // Show user-friendly error message
         eprintln!("Cannot perform action: {}", reason);
     }
-    Err(GameError::InvalidTeam { team_id }) => {
-        eprintln!("Team {} does not exist", team_id);
+    Err(GameError::EventError(event_error)) => {
+        match event_error {
+            EventError::EventAlreadyActive => {
+                eprintln!("An event is already in progress");
+            }
+            EventError::NoEventAvailable => {
+                eprintln!("No events available to trigger");
+            }
+            EventError::AnimationFailed { reason } => {
+                eprintln!("Event animation failed: {}", reason);
+            }
+            EventError::InvalidEventState => {
+                eprintln!("Event system is in an invalid state");
+            }
+        }
     }
-    // ... handle other error types
 }
 ```
 
@@ -236,5 +390,80 @@ The GameEngine is designed to integrate cleanly with the egui-based UI:
 3. **State Display**: Use query methods to update UI state
 4. **Effects**: Process GameEffects for visual feedback
 5. **Error Display**: Show user-friendly error messages from GameError
+6. **Event Animations**: Handle event system visual effects through the UI layer
 
-This architecture ensures that all game logic is centralized and testable while providing a clean interface for the UI layer.
+### Event System UI Integration
+
+The event system is fully integrated into the game UI with sophisticated visual effects:
+
+#### Event Animation Controller
+The UI manages event animations through the `EventAnimationController`:
+```rust
+use crate::game::events::{EventAnimationController, GameEvent, EventAnimationType};
+
+// Animation controller is stored in UI memory and updated each frame
+let mut event_animation: Option<EventAnimationController> = ui
+    .memory_mut(|m| m.data.get_temp(event_animation_id))
+    .unwrap_or(None);
+```
+
+#### Event Animation Types
+Each event type has a unique visual animation:
+
+- **Double Points** (`EventAnimationType::DoublePointsMultiplication`):
+  - 3-second cyan/blue animation with scaling effects
+  - Displays "×2" symbol with energy bursts and pulsing rings
+  - Point multiplication visualization with particle effects
+
+- **Hard Reset** (`EventAnimationType::HardResetGlitch`):
+  - 4-second red glitch animation with screen distortion
+  - Shows "RESET" text with digital artifacts and static effects
+  - System reboot sequence with progressive loading lines
+
+- **Reverse Question** (`EventAnimationType::ReverseQuestionFlip`):
+  - 2.5-second purple animation with data stream effects
+  - Text flipping animation showing "?" transforming to "!"
+  - Holographic distortion and mirror effects
+
+#### Animation Lifecycle
+```rust
+// Check for new event animations from game effects
+if event_animation.is_none() {
+    if let Some(active_event) = &game_engine.get_state().event_state.active_event {
+        let mut controller = EventAnimationController::new();
+        let duration = match active_event {
+            GameEvent::DoublePoints => Duration::from_millis(3000),
+            GameEvent::HardReset => Duration::from_millis(4000),
+            GameEvent::ReverseQuestion => Duration::from_millis(2500),
+        };
+        controller.start_animation(active_event.clone(), duration);
+        event_animation = Some(controller);
+    }
+}
+
+// Update and render active animations
+if let Some(mut controller) = event_animation.take() {
+    if controller.update() {
+        // Animation completed
+        event_animation = None;
+    } else {
+        // Render animation overlay
+        draw_event_animation(&painter, rect, &controller);
+        event_animation = Some(controller);
+    }
+}
+```
+
+#### Event State Indicators
+The UI displays event status through various indicators:
+- Active event notifications in the game interface
+- Visual feedback for event triggers and completions
+- Event history tracking for game session review
+
+#### Interaction Blocking
+During event announcements, the UI blocks user interactions to ensure proper event presentation:
+```rust
+let interaction_blocked = flash.is_some() || pending_answer.is_some() || event_animation.is_some();
+```
+
+This architecture ensures that all game logic is centralized and testable while providing a clean interface for the UI layer with rich visual feedback for the event system.
