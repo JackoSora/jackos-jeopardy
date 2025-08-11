@@ -7,7 +7,7 @@ use crate::game::{GameAction, GameActionResult, GameEngine, PlayPhase};
 use crate::theme::Palette;
 use crate::theme::{ModalButtonType, adjust_brightness, enhanced_modal_button};
 use crate::ui::{
-    paint_enhanced_category_header, paint_enhanced_clue_cell, paint_enhanced_modal_background,
+    paint_enhanced_category_header, paint_enhanced_clue_cell, paint_subtle_modal_background,
 };
 
 use std::time::{Duration, Instant};
@@ -501,8 +501,8 @@ fn draw_showing_overlay(
             let rect = screen;
             let painter = ui.painter_at(rect);
 
-            // Enhanced modal background
-            paint_enhanced_modal_background(&painter, rect);
+            // Subtle modal background for dialogue
+            paint_subtle_modal_background(&painter, rect);
 
             let (question, points) = game_engine
                 .get_state()
@@ -519,21 +519,21 @@ fn draw_showing_overlay(
                 |ui| {
                     ui.add_space(50.0);
 
-                    // Enhanced points display with glow
+                    // Enhanced points display with amber glow
                     ui.heading(
                         egui::RichText::new(format!("{} pts", points))
-                            .color(adjust_brightness(Palette::CYAN, 1.3))
+                            .color(Palette::AMBER_GLOW)
                             .size(36.0),
                     );
 
                     ui.add_space(30.0);
 
-                    // Enhanced question text
+                    // Enhanced question text with yellow styling
                     let wrap_width = rect.width() * 0.85;
                     let label = egui::Label::new(
                         egui::RichText::new(question)
                             .size(30.0)
-                            .color(adjust_brightness(Palette::TEXT, 1.1)),
+                            .color(Palette::CYBER_YELLOW),
                     )
                     .wrap(true)
                     .truncate(false);
@@ -607,14 +607,16 @@ fn draw_steal_overlay(
         .show(ctx, |ui| {
             let rect = screen;
             let painter = ui.painter_at(rect);
-            // Enhanced modal background
-            paint_enhanced_modal_background(&painter, rect);
+            // Subtle modal background for dialogue
+            paint_subtle_modal_background(&painter, rect);
             ui.allocate_ui_with_layout(
                 rect.size(),
                 egui::Layout::top_down(egui::Align::Center),
                 |ui| {
                     ui.add_space(24.0);
-                    ui.heading(egui::RichText::new(format!("{} pts", points)).color(Palette::CYAN));
+                    ui.heading(
+                        egui::RichText::new(format!("{} pts", points)).color(Palette::AMBER_GLOW),
+                    );
                     ui.add_space(12.0);
                     let wrap_width = rect.width() * 0.9;
                     let label = egui::Label::new(egui::RichText::new(question).size(26.0))
@@ -692,8 +694,8 @@ fn draw_resolved_overlay(
             let rect = screen;
             let painter = ui.painter_at(rect);
 
-            // Enhanced modal background
-            paint_enhanced_modal_background(&painter, rect);
+            // Subtle modal background for dialogue
+            paint_subtle_modal_background(&painter, rect);
 
             let (question, answer, points) = game_engine
                 .get_state()
@@ -710,21 +712,21 @@ fn draw_resolved_overlay(
                 |ui| {
                     ui.add_space(40.0);
 
-                    // Enhanced points display
+                    // Enhanced points display with amber styling
                     ui.heading(
                         egui::RichText::new(format!("{} pts", points))
-                            .color(adjust_brightness(Palette::CYAN, 1.3))
+                            .color(Palette::AMBER_GLOW)
                             .size(32.0),
                     );
 
                     ui.add_space(25.0);
 
-                    // Enhanced question text
+                    // Enhanced question text with yellow styling
                     let wrap_width = rect.width() * 0.85;
                     let q_label = egui::Label::new(
                         egui::RichText::new(question)
                             .size(26.0)
-                            .color(adjust_brightness(Palette::TEXT, 1.1)),
+                            .color(Palette::CYBER_YELLOW),
                     )
                     .wrap(true)
                     .truncate(false);
@@ -732,10 +734,10 @@ fn draw_resolved_overlay(
 
                     ui.add_space(20.0);
 
-                    // Enhanced answer text with special styling
+                    // Enhanced answer text with amber styling
                     let a_label = egui::Label::new(
                         egui::RichText::new(format!("Answer: {}", answer))
-                            .color(adjust_brightness(Palette::MAGENTA, 1.2))
+                            .color(Palette::AMBER_GLOW)
                             .size(24.0)
                             .strong(),
                     )

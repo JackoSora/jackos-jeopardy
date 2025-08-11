@@ -13,16 +13,21 @@ impl Palette {
     pub const BG_ACTIVE: egui::Color32 = egui::Color32::from_rgb(36, 0, 58);
     pub const TEXT: egui::Color32 = egui::Color32::from_rgb(208, 255, 247);
 
-    // Extended cyberpunk colors  
+    // Extended cyberpunk colors
     pub const NEON_BLUE: egui::Color32 = egui::Color32::from_rgb(0, 150, 255);
-    
+
+    // Dialogue window colors
+    pub const CYBER_YELLOW: egui::Color32 = egui::Color32::from_rgb(255, 220, 80);
+    pub const AMBER_GLOW: egui::Color32 = egui::Color32::from_rgb(255, 180, 60);
+    pub const SUBTLE_TEAL: egui::Color32 = egui::Color32::from_rgb(80, 120, 110);
+
     // Background gradient colors (used in theme)
     pub const PANEL_GRADIENT_START: egui::Color32 = egui::Color32::from_rgb(25, 25, 45);
-    
+
     // Glow colors (used in buttons)
     pub const GLOW_CYAN_INNER: egui::Color32 = egui::Color32::from_rgb(100, 255, 200);
     pub const GLOW_CYAN_OUTER: egui::Color32 = egui::Color32::TRANSPARENT;
     pub const GLOW_MAGENTA_INNER: egui::Color32 = egui::Color32::from_rgb(255, 100, 200);
     pub const GLOW_BLUE_INNER: egui::Color32 = egui::Color32::from_rgb(100, 200, 255);
+    pub const GLOW_YELLOW_INNER: egui::Color32 = egui::Color32::from_rgb(255, 200, 100);
 }
-

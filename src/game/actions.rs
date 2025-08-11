@@ -277,10 +277,13 @@ impl GameActionHandler {
             effect_type: FlashType::Correct,
         });
 
-        let new_phase = PlayPhase::Resolved {
-            clue,
-            next_team_id: team_id,
-        };
+        // Always rotate the selecting team after a question resolves
+        let next_team_id = self
+            .scoring
+            .rotate_active_team(&state.teams, state.active_team);
+        state.active_team = next_team_id;
+
+        let new_phase = PlayPhase::Resolved { clue, next_team_id };
         state.phase = new_phase.clone();
 
         Ok(GameActionResult::StateChanged { new_phase, effects })
@@ -365,7 +368,7 @@ impl GameActionHandler {
         if let PlayPhase::Steal {
             queue,
             current,
-            owner_team_id,
+            owner_team_id: _,
             ..
         } = &mut state.phase
         {
@@ -418,10 +421,13 @@ impl GameActionHandler {
                     effect_type: FlashType::Correct,
                 });
 
-                let new_phase = PlayPhase::Resolved {
-                    clue,
-                    next_team_id: team_id,
-                };
+                // Always rotate the selecting team after a question resolves
+                let next_team_id = self
+                    .scoring
+                    .rotate_active_team(&state.teams, state.active_team);
+                state.active_team = next_team_id;
+
+                let new_phase = PlayPhase::Resolved { clue, next_team_id };
                 state.phase = new_phase.clone();
 
                 Ok(GameActionResult::StateChanged { new_phase, effects })
@@ -455,10 +461,13 @@ impl GameActionHandler {
                         }
                     }
 
-                    let new_phase = PlayPhase::Resolved {
-                        clue,
-                        next_team_id: *owner_team_id,
-                    };
+                    // No successful stealers; still rotate the selecting team
+                    let next_team_id = self
+                        .scoring
+                        .rotate_active_team(&state.teams, state.active_team);
+                    state.active_team = next_team_id;
+
+                    let new_phase = PlayPhase::Resolved { clue, next_team_id };
                     state.phase = new_phase.clone();
 
                     Ok(GameActionResult::StateChanged { new_phase, effects })
