@@ -15,11 +15,21 @@ Run the game:
 
 ## Features
 
+
 - **Enhanced Cyberpunk Theme**: Dark theme with neon colors, dialogue-specific color palette, glow effects, and smooth animations
 - **Dynamic Events**: Special gameplay modifiers triggered automatically during play
 - **Advanced Visual Effects**: Gradient backgrounds, particle effects, smooth transitions, and performance-optimized rendering
 - **Team Management**: Support for multiple teams with comprehensive scoring system
 - **Save/Load**: Persistent game state with autosave and manual save functionality
+
+### Event Visual Indicators
+
+Each event has a unique full-screen animation and indicator to help players understand its effect:
+
+- **Double Points**: Cyan/blue overlay with pulsing "×2" symbol, energy bursts, and multiplier icon near scores. Indicates all points (and penalties) are doubled for the next question.
+- **Hard Reset**: Red glitch overlay with "RESET" text, digital artifacts, and static. All team scores are instantly reset to zero; no persistent indicator after animation.
+- **Reverse Question**: Purple/magenta overlay with flowing data streams, flipping "?"/"!" symbols, and a mirror icon near clue selection. The next clue has its question and answer swapped.
+- **Score Steal**: Green/gold overlay with a bag of money moving from the leading team to the lowest team, coin trail, and team names/amounts shown. Indicates the lowest team has stolen 20% of the leader's points (see animation for details).
 
 ## Rules
 
