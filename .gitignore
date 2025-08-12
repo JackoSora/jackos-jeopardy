@@ -4,5 +4,28 @@
 saves/
 .kiro/
 .vscode/
-.github/
-Cargo.lock
+cargo.lock
+
+# Build artifacts and temporary files
+*.exe
+*.dmg
+*.deb
+*.rpm
+*.AppImage
+*.tar.gz
+*.zip
+artifacts/
+dist/
+build/
+*.sha256
+*.sig
+
+# Platform-specific files
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+
+# CI/CD temporary files
+.env.local
+.env.*.local

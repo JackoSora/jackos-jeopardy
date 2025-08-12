@@ -6,7 +6,7 @@ pub fn with_alpha(color: egui::Color32, alpha: u8) -> egui::Color32 {
     egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
 }
 
-// Re-add create_gradient_colors since it's used  
+// Re-add create_gradient_colors since it's used
 pub fn create_gradient_colors(base_color: egui::Color32, steps: usize) -> Vec<egui::Color32> {
     let mut colors = Vec::with_capacity(steps);
     let bright_color = adjust_brightness(base_color, 1.3);
@@ -39,7 +39,6 @@ pub fn adjust_brightness(color: egui::Color32, factor: f32) -> egui::Color32 {
     egui::Color32::from_rgba_unmultiplied(r, g, b, color.a())
 }
 
-
 /// Calculate appropriate text color for a given background
 pub fn contrasting_text_color(background: egui::Color32) -> egui::Color32 {
     // Calculate luminance
@@ -55,4 +54,3 @@ pub fn contrasting_text_color(background: egui::Color32) -> egui::Color32 {
         egui::Color32::WHITE
     }
 }
-

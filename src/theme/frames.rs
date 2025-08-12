@@ -25,4 +25,3 @@ pub fn window_frame() -> egui::Frame {
         .rounding(12.0)
         .inner_margin(egui::Margin::symmetric(16.0, 16.0))
 }
-

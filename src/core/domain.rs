@@ -56,7 +56,6 @@ impl UiMapping {
         }
         Self { logical_to_visual }
     }
-
 }
 
 impl Default for Board {

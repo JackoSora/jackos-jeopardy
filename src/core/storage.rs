@@ -7,13 +7,11 @@ use serde::{Deserialize, Serialize};
 use crate::core::Board;
 use crate::game::GameState;
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
     pub board: Board,
     pub game: Option<GameState>,
 }
-
 
 // Manual saves in ./saves directory
 pub fn ensure_saves_dir() -> Result<PathBuf> {

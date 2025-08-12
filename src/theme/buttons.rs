@@ -115,7 +115,6 @@ pub fn danger_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Respon
     ui.add(button)
 }
 
-
 /// Button type for modal dialogs
 #[derive(Clone, Copy)]
 pub enum ModalButtonType {

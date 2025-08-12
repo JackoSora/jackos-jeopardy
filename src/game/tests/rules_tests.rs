@@ -1,6 +1,6 @@
 use super::*;
-use crate::game::rules::GameRules;
 use crate::game::GameAction;
+use crate::game::rules::GameRules;
 
 #[test]
 fn test_can_add_team_rules() {

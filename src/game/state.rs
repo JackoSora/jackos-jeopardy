@@ -55,7 +55,6 @@ impl GameState {
         }
     }
 
-
     // New query methods for better encapsulation
     pub fn get_active_team(&self) -> Option<&Team> {
         self.teams.iter().find(|t| t.id == self.active_team)
@@ -88,5 +87,4 @@ impl GameState {
             false
         }
     }
-
 }

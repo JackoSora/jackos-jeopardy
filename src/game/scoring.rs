@@ -28,7 +28,6 @@ impl ScoringEngine {
         }
     }
 
-
     /// Add a new team and return its ID
     pub fn add_team(&self, teams: &mut Vec<Team>, name: String) -> u32 {
         let next_id: u32 = teams
@@ -53,7 +52,9 @@ impl ScoringEngine {
             total_teams: teams.len(),
             highest_score: teams.iter().map(|t| t.score).max().unwrap_or(0),
             lowest_score: teams.iter().map(|t| t.score).min().unwrap_or(0),
-            average_score: if teams.is_empty() { 0.0 } else {
+            average_score: if teams.is_empty() {
+                0.0
+            } else {
                 teams.iter().map(|t| t.score).sum::<i32>() as f64 / teams.len() as f64
             },
             total_points: teams.iter().map(|t| t.score).sum(),
@@ -88,7 +89,6 @@ impl ScoringEngine {
     pub fn team_exists(&self, teams: &[Team], team_id: u32) -> bool {
         teams.iter().any(|t| t.id == team_id)
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -99,4 +99,3 @@ pub struct TeamStats {
     pub average_score: f64,
     pub total_points: i32,
 }
-

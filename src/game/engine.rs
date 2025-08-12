@@ -23,7 +23,6 @@ impl GameEngine {
         self.action_handler.handle(&mut self.state, action)
     }
 
-
     /// Get the current game phase
     pub fn get_phase(&self) -> &PlayPhase {
         &self.state.phase
@@ -39,7 +38,6 @@ impl GameEngine {
         &mut self.state
     }
 
-
     /// Get the number of teams
     pub fn team_count(&self) -> usize {
         self.state.teams.len()
@@ -47,11 +45,18 @@ impl GameEngine {
 
     // API methods for tests and future use
     pub fn get_team_score(&self, team_id: u32) -> Option<i32> {
-        self.state.teams.iter().find(|t| t.id == team_id).map(|t| t.score)
+        self.state
+            .teams
+            .iter()
+            .find(|t| t.id == team_id)
+            .map(|t| t.score)
     }
 
     pub fn get_active_team(&self) -> Option<&crate::core::Team> {
-        self.state.teams.iter().find(|t| t.id == self.state.active_team)
+        self.state
+            .teams
+            .iter()
+            .find(|t| t.id == self.state.active_team)
     }
 
     pub fn is_clue_available(&self, clue: (usize, usize)) -> bool {
@@ -73,5 +78,4 @@ impl GameEngine {
     pub fn get_clue(&self, clue: (usize, usize)) -> Option<&crate::core::Clue> {
         self.state.get_clue(clue)
     }
-
 }

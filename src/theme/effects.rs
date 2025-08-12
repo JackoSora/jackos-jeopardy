@@ -39,7 +39,6 @@ impl GlowConfig {
             layers: 4,
         }
     }
-
 }
 
 /// Paint a rectangle with glow effect
@@ -73,7 +72,6 @@ pub fn paint_glow_rect(
         painter.rect_filled(expanded_rect, rounding + expansion * 0.5, final_color);
     }
 }
-
 
 /// Paint a gradient rectangle
 pub fn paint_gradient_rect(
@@ -136,4 +134,3 @@ pub fn paint_completion_particles(
         painter.circle_filled(particle_pos, particle_size, particle_color);
     }
 }
-
