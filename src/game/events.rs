@@ -125,9 +125,42 @@ impl EventConfig {
             return None;
         }
 
-        use rand::seq::SliceRandom;
-        let mut rng = rand::thread_rng();
-        self.enabled_events.choose(&mut rng).cloned()
+        // Weighted selection: DoublePoints (highest) > ReverseQuestion > ScoreSteal > HardReset (lowest)
+        // Only consider events that are enabled.
+        let mut events: Vec<GameEvent> = Vec::new();
+        let mut weights: Vec<u32> = Vec::new();
+
+        for e in &self.enabled_events {
+            let w = match e {
+                GameEvent::DoublePoints => 50, 
+                GameEvent::ReverseQuestion => 30,
+                GameEvent::ScoreSteal => 15,
+                GameEvent::HardReset => 5, 
+            };
+            events.push(e.clone());
+            weights.push(w);
+        }
+
+        // Fallback to uniform if something odd happens (e.g., zeroed weights)
+        if weights.iter().all(|&w| w == 0) {
+            use rand::seq::SliceRandom;
+            let mut rng = rand::thread_rng();
+            return events.choose(&mut rng).cloned();
+        }
+
+        use rand::distributions::WeightedIndex;
+        use rand::prelude::Distribution;
+        let dist = WeightedIndex::new(&weights).ok();
+        if let Some(dist) = dist {
+            let mut rng = rand::thread_rng();
+            let idx = dist.sample(&mut rng);
+            events.get(idx).cloned()
+        } else {
+            // If weights invalid, fall back to uniform
+            use rand::seq::SliceRandom;
+            let mut rng = rand::thread_rng();
+            events.choose(&mut rng).cloned()
+        }
     }
 }
 

@@ -112,15 +112,19 @@ impl EventState {
 
 ### Event Selection
 
-Events are selected randomly with equal probability from the enabled events list:
+Events are selected randomly using weighted probabilities to bias outcomes:
+- Highest chance: Double Points
+- Second highest: Reverse Question
+- Second lowest: Score Steal
+- Lowest: Hard Reset
 
 ```rust
 impl EventConfig {
-    /// Get a random event from enabled events
+    /// Get a random event from enabled events (weighted selection)
     pub fn get_random_event(&self) -> Option<GameEvent> {
-        use rand::seq::SliceRandom;
-        let mut rng = rand::thread_rng();
-        self.enabled_events.choose(&mut rng).cloned()
+        // uses WeightedIndex internally; see source for exact weights
+        // DoublePoints (highest), ReverseQuestion, ScoreSteal, HardReset (lowest)
+        /* ... */
     }
 }
 ```
