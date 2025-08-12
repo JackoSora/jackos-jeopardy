@@ -1,4 +1,5 @@
-use crate::game::events::{EventAnimationType, EventError, GameEvent};
+use crate::core::Team;
+use crate::game::events::{EventAnimationType, EventError, GameEvent, StealEventContext};
 use crate::game::rules::GameRules;
 use crate::game::scoring::ScoringEngine;
 use crate::game::state::PlayPhase;
@@ -67,6 +68,7 @@ pub enum GameEffect {
     ScoreReset,
     DoublePointsActivated,
     ReverseQuestionActivated,
+    ScoreStealApplied { context: StealEventContext },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -517,6 +519,43 @@ impl GameActionHandler {
                         team.score = 0;
                     }
                     effects.push(GameEffect::ScoreReset);
+                } else if matches!(event, GameEvent::ScoreSteal) {
+                    // Apply score steal immediately and store context
+                    if let Some((thief_idx, victim_idx)) =
+                        lowest_and_highest_team_indices(&state.teams)
+                    {
+                        let (thief, victim) = {
+                            let (left, right) = state.teams.split_at_mut(victim_idx.max(thief_idx));
+                            if thief_idx < victim_idx {
+                                (&mut left[thief_idx], &mut right[0])
+                            } else {
+                                (&mut right[0], &mut left[victim_idx])
+                            }
+                        };
+                        let amount = ((victim.score as f32) * 0.20).floor() as i32;
+                        let amount = amount.max(0);
+                        victim.score = victim.score.saturating_sub(amount);
+                        thief.score = thief.score.saturating_add(amount);
+                        // Save context for UI
+                        state.event_state.last_steal = Some(StealEventContext {
+                            thief_id: thief.id,
+                            thief_name: thief.name.clone(),
+                            victim_id: victim.id,
+                            victim_name: victim.name.clone(),
+                            amount,
+                        });
+                        effects.push(GameEffect::ScoreChanged {
+                            team_id: victim.id,
+                            delta: -amount,
+                        });
+                        effects.push(GameEffect::ScoreChanged {
+                            team_id: thief.id,
+                            delta: amount,
+                        });
+                        effects.push(GameEffect::ScoreStealApplied {
+                            context: state.event_state.last_steal.clone().unwrap(),
+                        });
+                    }
                 }
 
                 effects.push(GameEffect::EventQueued { event });
@@ -571,7 +610,7 @@ impl GameActionHandler {
         state.event_state.set_animation_playing(true);
 
         // For non-Hard Reset events, activate them now for the next cell
-        if !matches!(event, GameEvent::HardReset) {
+        if !matches!(event, GameEvent::HardReset | GameEvent::ScoreSteal) {
             state.event_state.activate_event(event.clone());
         }
 
@@ -580,6 +619,7 @@ impl GameActionHandler {
                 GameEvent::DoublePoints => EventAnimationType::DoublePointsMultiplication,
                 GameEvent::HardReset => EventAnimationType::HardResetGlitch,
                 GameEvent::ReverseQuestion => EventAnimationType::ReverseQuestionFlip,
+                GameEvent::ScoreSteal => EventAnimationType::ScoreStealHeist,
             },
         }];
 
@@ -611,6 +651,7 @@ impl GameActionHandler {
                     GameEvent::DoublePoints => EventAnimationType::DoublePointsMultiplication,
                     GameEvent::HardReset => EventAnimationType::HardResetGlitch,
                     GameEvent::ReverseQuestion => EventAnimationType::ReverseQuestionFlip,
+                    GameEvent::ScoreSteal => EventAnimationType::ScoreStealHeist,
                 },
             },
         ];
@@ -629,6 +670,42 @@ impl GameActionHandler {
             }
             GameEvent::ReverseQuestion => {
                 effects.push(GameEffect::ReverseQuestionActivated);
+            }
+            GameEvent::ScoreSteal => {
+                // Apply immediately when triggered manually too
+                if let Some((thief_idx, victim_idx)) = lowest_and_highest_team_indices(&state.teams)
+                {
+                    let (thief, victim) = {
+                        let (left, right) = state.teams.split_at_mut(victim_idx.max(thief_idx));
+                        if thief_idx < victim_idx {
+                            (&mut left[thief_idx], &mut right[0])
+                        } else {
+                            (&mut right[0], &mut left[victim_idx])
+                        }
+                    };
+                    let amount = ((victim.score as f32) * 0.20).floor() as i32;
+                    let amount = amount.max(0);
+                    victim.score = victim.score.saturating_sub(amount);
+                    thief.score = thief.score.saturating_add(amount);
+                    state.event_state.last_steal = Some(StealEventContext {
+                        thief_id: thief.id,
+                        thief_name: thief.name.clone(),
+                        victim_id: victim.id,
+                        victim_name: victim.name.clone(),
+                        amount,
+                    });
+                    effects.push(GameEffect::ScoreChanged {
+                        team_id: victim.id,
+                        delta: -amount,
+                    });
+                    effects.push(GameEffect::ScoreChanged {
+                        team_id: thief.id,
+                        delta: amount,
+                    });
+                    effects.push(GameEffect::ScoreStealApplied {
+                        context: state.event_state.last_steal.clone().unwrap(),
+                    });
+                }
             }
         }
 
@@ -670,5 +747,28 @@ impl GameActionHandler {
         Ok(GameActionResult::Success {
             new_phase: PlayPhase::Finished,
         })
+    }
+}
+
+/// Find indices of the lowest-scoring team (thief) and highest-scoring team (victim).
+/// Returns None if fewer than 2 teams or all scores equal.
+fn lowest_and_highest_team_indices(teams: &[Team]) -> Option<(usize, usize)> {
+    if teams.len() < 2 {
+        return None;
+    }
+    let mut min_i = 0usize;
+    let mut max_i = 0usize;
+    for (i, t) in teams.iter().enumerate() {
+        if t.score < teams[min_i].score {
+            min_i = i;
+        }
+        if t.score > teams[max_i].score {
+            max_i = i;
+        }
+    }
+    if min_i == max_i {
+        None
+    } else {
+        Some((min_i, max_i))
     }
 }

@@ -31,6 +31,13 @@ Events are triggered automatically every 4 questions answered, regardless of whe
 - **Animation**: 2.5-second purple data stream reversal with holographic distortion
 - **Strategy**: Tests knowledge from a different angle - players must think about what question would produce the given "answer"
 
+### Score Steal Event
+- **Trigger**: Random selection when event threshold is reached
+- **Duration**: Instantaneous
+- **Effect**: The lowest-scoring team steals 20% of the leading team's current points (floored), applied immediately upon queuing/trigger.
+- **Animation**: ~3.2-second heist animation showing a money bag moving from the leader to the lowest team, with team names and +/- amounts.
+- **Strategy**: Momentum shift mechanic—helps trailing teams catch up and keeps competition tight.
+
 ## Technical Implementation
 
 ### Core Data Structures
@@ -137,6 +144,7 @@ pub enum EventAnimationType {
     DoublePointsMultiplication, // Scaling effects, cyan/blue colors
     HardResetGlitch,           // Screen distortion, red error colors
     ReverseQuestionFlip,       // Data streams, purple/magenta colors
+    ScoreStealHeist,           // Money-bag transfer with team labels
 }
 ```
 
@@ -198,6 +206,7 @@ pub enum AnimationPhase {
 - **Effect Application**: 
   - Hard Reset: Applied immediately when queued
   - Double Points/Reverse Question: Applied when animation starts for next cell
+    - Score Steal: Applied immediately when queued (and when manually triggered), with UI context captured for names/amount
 - **Interaction Blocking**: Cell selection is blocked during animation playback
 
 ### State Management
@@ -236,6 +245,7 @@ pub enum GameEffect {
     ScoreReset,                                    // Update score displays
     DoublePointsActivated,                         // Show double points indicator
     ReverseQuestionActivated,                      // Show reverse question indicator
+    ScoreStealApplied { context: StealEventContext }, // Applied immediately, drives heist overlay labels
 }
 ```
 

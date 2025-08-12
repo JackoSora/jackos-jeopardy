@@ -7,6 +7,8 @@ pub enum GameEvent {
     DoublePoints,
     HardReset,
     ReverseQuestion,
+    /// Lowest score team steals 20% of the points from the leading team
+    ScoreSteal,
 }
 
 /// Tracks the state of the event system within a game
@@ -17,6 +19,9 @@ pub struct EventState {
     pub queued_event: Option<GameEvent>,
     pub event_history: Vec<GameEvent>,
     pub animation_playing: bool,
+    /// Context for the last score steal event (for UI animation)
+    #[serde(default)]
+    pub last_steal: Option<StealEventContext>,
 }
 
 impl EventState {
@@ -27,6 +32,7 @@ impl EventState {
             queued_event: None,
             event_history: Vec::new(),
             animation_playing: false,
+            last_steal: None,
         }
     }
 
@@ -107,6 +113,7 @@ impl EventConfig {
                 GameEvent::DoublePoints,
                 GameEvent::HardReset,
                 GameEvent::ReverseQuestion,
+                GameEvent::ScoreSteal,
             ],
             animation_duration: Duration::from_millis(3000),
         }
@@ -136,6 +143,7 @@ pub enum EventAnimationType {
     DoublePointsMultiplication,
     HardResetGlitch,
     ReverseQuestionFlip,
+    ScoreStealHeist,
 }
 
 /// Animation phases for event announcements
@@ -213,6 +221,7 @@ impl EventAnimationController {
                 GameEvent::DoublePoints => EventAnimationType::DoublePointsMultiplication,
                 GameEvent::HardReset => EventAnimationType::HardResetGlitch,
                 GameEvent::ReverseQuestion => EventAnimationType::ReverseQuestionFlip,
+                GameEvent::ScoreSteal => EventAnimationType::ScoreStealHeist,
             })
     }
 }
@@ -294,6 +303,16 @@ impl ReverseQuestionEvent {
         // Since we swapped them, swapping again restores the original
         std::mem::swap(&mut clue.question, &mut clue.answer);
     }
+}
+
+/// Context for ScoreSteal event so the UI can display team names and amount
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StealEventContext {
+    pub thief_id: u32,
+    pub thief_name: String,
+    pub victim_id: u32,
+    pub victim_name: String,
+    pub amount: i32,
 }
 
 #[cfg(test)]
@@ -754,5 +773,98 @@ mod tests {
 
         // Event should be deactivated
         assert!(engine.get_state().event_state.active_event.is_none());
+    }
+
+    #[test]
+    fn test_score_steal_manual_trigger_transfers_points() {
+        // Setup engine with two teams and distinct scores
+        let mut board = Board::default();
+        board.categories = vec![Category {
+            name: "Cat".to_string(),
+            clues: vec![Clue {
+                id: 1,
+                points: 100,
+                question: "Q".to_string(),
+                answer: "A".to_string(),
+                revealed: false,
+                solved: false,
+            }],
+        }];
+
+        let mut engine = GameEngine::new(board);
+        let _ = engine.handle_action(GameAction::AddTeam { name: "Low".into() });
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "High".into(),
+        });
+        let _ = engine.handle_action(GameAction::StartGame);
+
+        // Ensure team[0] is lowest and team[1] is highest
+        let low_id = engine.get_state().teams[0].id;
+        let high_id = engine.get_state().teams[1].id;
+        engine.get_state_mut().teams[0].score = 200;
+        engine.get_state_mut().teams[1].score = 1000;
+
+        // Trigger ScoreSteal
+        let result = engine.handle_action(GameAction::TriggerEvent {
+            event: GameEvent::ScoreSteal,
+        });
+        assert!(result.is_ok());
+
+        // Expect 20% of highest (1000) transferred = 200
+        let state = engine.get_state();
+        let low_team = state.teams.iter().find(|t| t.id == low_id).unwrap();
+        let high_team = state.teams.iter().find(|t| t.id == high_id).unwrap();
+        assert_eq!(low_team.score, 400);
+        assert_eq!(high_team.score, 800);
+
+        // Context should be populated
+        let ctx = state
+            .event_state
+            .last_steal
+            .as_ref()
+            .expect("last_steal context should be set");
+        assert_eq!(ctx.thief_id, low_id);
+        assert_eq!(ctx.victim_id, high_id);
+        assert_eq!(ctx.amount, 200);
+    }
+
+    #[test]
+    fn test_score_steal_no_transfer_if_equal_scores() {
+        // Setup engine with two teams having equal scores
+        let mut board = Board::default();
+        board.categories = vec![Category {
+            name: "Cat".to_string(),
+            clues: vec![Clue {
+                id: 1,
+                points: 100,
+                question: "Q".to_string(),
+                answer: "A".to_string(),
+                revealed: false,
+                solved: false,
+            }],
+        }];
+
+        let mut engine = GameEngine::new(board);
+        let _ = engine.handle_action(GameAction::AddTeam { name: "A".into() });
+        let _ = engine.handle_action(GameAction::AddTeam { name: "B".into() });
+        let _ = engine.handle_action(GameAction::StartGame);
+
+        let a_id = engine.get_state().teams[0].id;
+        let b_id = engine.get_state().teams[1].id;
+        engine.get_state_mut().teams[0].score = 500;
+        engine.get_state_mut().teams[1].score = 500;
+
+        let result = engine.handle_action(GameAction::TriggerEvent {
+            event: GameEvent::ScoreSteal,
+        });
+        assert!(result.is_ok());
+
+        // No transfer should occur; scores unchanged
+        let state = engine.get_state();
+        let a = state.teams.iter().find(|t| t.id == a_id).unwrap();
+        let b = state.teams.iter().find(|t| t.id == b_id).unwrap();
+        assert_eq!(a.score, 500);
+        assert_eq!(b.score, 500);
+        assert!(state.event_state.last_steal.is_none());
     }
 }

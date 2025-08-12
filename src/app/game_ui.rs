@@ -5,11 +5,10 @@ use crate::core::Board;
 use crate::game::events::{EventAnimationController, EventAnimationType, GameEvent};
 use crate::game::{GameAction, GameActionResult, GameEngine, PlayPhase};
 use crate::theme::Palette;
-use crate::theme::{ModalButtonType, adjust_brightness, enhanced_modal_button};
+use crate::theme::{ModalButtonType, enhanced_modal_button};
 use crate::ui::{
     paint_enhanced_category_header, paint_enhanced_clue_cell, paint_subtle_modal_background,
 };
-
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -82,7 +81,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                             GameActionResult::StateChanged { new_phase, .. } => {
                                 requested_phase = Some(new_phase)
                             }
-                            _ => {}
+                            
                         }
                     }
                 }
@@ -183,7 +182,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                                 GameActionResult::StateChanged { new_phase, .. } => {
                                     requested_phase = Some(new_phase)
                                 }
-                                _ => {}
+                                
                             }
                         }
                     }
@@ -340,7 +339,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                                 // Effects already represented visually by animation; nothing extra for now
                                 let _ = effects; // suppress unused warning if any
                             }
-                            _ => {}
+                            
                         }
                     }
                 }
@@ -365,7 +364,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                                 // Effects already represented visually by animation; nothing extra for now
                                 let _ = effects; // suppress unused warning if any
                             }
-                            _ => {}
+                            
                         }
                     }
                 }
@@ -417,6 +416,18 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                                 EventAnimationType::ReverseQuestionFlip => {
                                     draw_reverse_question_animation(&painter, rect, t);
                                 }
+                                EventAnimationType::ScoreStealHeist => {
+                                    draw_score_steal_animation(
+                                        &painter,
+                                        rect,
+                                        t,
+                                        game_engine
+                                            .get_state()
+                                            .event_state
+                                            .last_steal
+                                            .as_ref(),
+                                    );
+                                }
                             }
                         });
 
@@ -440,6 +451,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                         GameEvent::DoublePoints => Duration::from_millis(3000),
                         GameEvent::HardReset => Duration::from_millis(4000),
                         GameEvent::ReverseQuestion => Duration::from_millis(2500),
+                        GameEvent::ScoreSteal => Duration::from_millis(3200),
                     };
                     controller.start_animation(queued_event.clone(), duration);
 
@@ -450,8 +462,8 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                         .set_animation_playing(true);
                     let _ = game_engine.get_state_mut().event_state.take_queued_event();
 
-                    // For non-Hard Reset events, activate them now for the next cell
-                    if !matches!(queued_event, GameEvent::HardReset) {
+                    // For non-Hard Reset/ScoreSteal events, activate them now for the next cell
+                    if !matches!(queued_event, GameEvent::HardReset | GameEvent::ScoreSteal) {
                         game_engine
                             .get_state_mut()
                             .event_state
@@ -586,6 +598,90 @@ fn draw_showing_overlay(
                 );
             });
         });
+}
+
+// Heist animation for ScoreSteal event
+fn draw_score_steal_animation(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    t: f32,
+    ctx: Option<&crate::game::events::StealEventContext>,
+) {
+    let center = rect.center();
+    let ease_out = 1.0 - (1.0 - t).powf(3.0);
+    let ease_in_out = if t < 0.5 { 2.0 * t * t } else { 1.0 - 2.0 * (1.0 - t).powf(2.0) };
+
+    // Dim backdrop
+    let base_alpha = ((0.55 - ease_out * 0.25) * 255.0) as u8;
+    let base_color = egui::Color32::from_rgba_unmultiplied(10, 10, 10, base_alpha);
+    painter.rect_filled(rect, 0.0, base_color);
+
+    let green = egui::Color32::from_rgb(0, 220, 120);
+    let gold = egui::Color32::from_rgb(255, 215, 0);
+
+    // Positions
+    let offset = rect.width() * 0.28;
+    let victim_pos = egui::pos2(center.x + offset, center.y);
+    let thief_pos = egui::pos2(center.x - offset, center.y);
+
+    // Travel position for bag
+    let travel = egui::pos2(
+        victim_pos.x + (thief_pos.x - victim_pos.x) * ease_in_out,
+        victim_pos.y,
+    );
+
+    // Bag of money
+    let bag_size = egui::vec2(120.0, 140.0);
+    let bag_rect = egui::Rect::from_center_size(travel, bag_size);
+    let bag_color = egui::Color32::from_rgba_unmultiplied(130, 90, 40, 230);
+    painter.rect_filled(bag_rect, 16.0, bag_color);
+
+    let tie_rect = egui::Rect::from_center_size(
+        egui::pos2(travel.x, travel.y - bag_size.y * 0.45),
+        egui::vec2(60.0, 10.0),
+    );
+    painter.rect_filled(tie_rect, 4.0, egui::Color32::from_rgb(90, 60, 30));
+
+    // Dollar sign
+    let font = egui::FontId::proportional(64.0);
+    let galley = painter.layout_no_wrap("$".into(), font, gold);
+    painter.galley(bag_rect.center() - galley.size() / 2.0, galley, gold);
+
+    // Coins trail
+    for i in 0..10 {
+        let p = (t * 1.5 - i as f32 * 0.08).clamp(0.0, 1.0);
+        if p > 0.0 {
+            let x = victim_pos.x + (thief_pos.x - victim_pos.x) * p + (i as f32 * 7.0).sin() * 6.0;
+            let y = victim_pos.y - (p * 80.0) + (i as f32 * 13.0).cos() * 4.0;
+            let a = ((1.0 - p) * 200.0) as u8;
+            painter.circle_filled(egui::pos2(x, y), 8.0, egui::Color32::from_rgba_unmultiplied(255, 215, 0, a));
+        }
+    }
+
+    // Team labels and amount
+    if let Some(ctx) = ctx {
+        let name_font = egui::FontId::proportional(28.0);
+        let amt_font = egui::FontId::proportional(34.0);
+
+        let victim_g = painter.layout_no_wrap(ctx.victim_name.clone(), name_font.clone(), egui::Color32::WHITE);
+        painter.galley(victim_pos + egui::vec2(-victim_g.size().x / 2.0, 80.0), victim_g, egui::Color32::WHITE);
+        let victim_amt = painter.layout_no_wrap(format!("-{}", ctx.amount), amt_font.clone(), egui::Color32::from_rgb(255, 80, 80));
+        painter.galley(victim_pos + egui::vec2(-victim_amt.size().x / 2.0, 110.0), victim_amt, egui::Color32::from_rgb(255, 80, 80));
+
+        let thief_g = painter.layout_no_wrap(ctx.thief_name.clone(), name_font.clone(), egui::Color32::WHITE);
+        painter.galley(thief_pos + egui::vec2(-thief_g.size().x / 2.0, 80.0), thief_g, egui::Color32::WHITE);
+        let thief_amt = painter.layout_no_wrap(format!("+{}", ctx.amount), amt_font, green);
+        painter.galley(thief_pos + egui::vec2(-thief_amt.size().x / 2.0, 110.0), thief_amt, green);
+    }
+
+    // Accenting ripples
+    for i in 0..3 {
+        let p = (t * 1.3 - i as f32 * 0.15).clamp(0.0, 1.0);
+        if p > 0.0 {
+            let a = ((1.0 - p) * 90.0) as u8;
+            painter.circle_stroke(center, p * rect.width() * 0.45, egui::Stroke::new(2.0, egui::Color32::from_rgba_unmultiplied(0, 220, 120, a)));
+        }
+    }
 }
 
 fn draw_steal_overlay(
@@ -773,7 +869,7 @@ fn draw_resolved_overlay(
                                     GameActionResult::StateChanged { new_phase, .. } => {
                                         *requested_phase = Some(new_phase)
                                     }
-                                    _ => {}
+                                    
                                 }
                             }
                             ui.ctx().request_repaint();
@@ -975,14 +1071,14 @@ fn draw_double_points_animation(painter: &egui::Painter, rect: egui::Rect, t: f3
     // Multiplication symbol (×2) in the center
     let text_size = 120.0 + ease_in_out * 40.0;
     let text_alpha = ((1.0 - ease_out * 0.3) * 255.0) as u8;
-    let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, text_alpha);
+    let _text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, text_alpha);
 
     // Draw "×2" text
     let font_id = egui::FontId::proportional(text_size);
     let text = "×2";
-    let galley = painter.layout_no_wrap(text.to_string(), font_id, text_color);
+    let galley = painter.layout_no_wrap(text.to_string(), font_id, _text_color);
     let text_pos = center - galley.size() / 2.0;
-    painter.galley(text_pos, galley, text_color);
+    painter.galley(text_pos, galley, _text_color);
 
     // Energy bursts around the multiplication symbol
     let burst_count = 8;
@@ -1075,13 +1171,13 @@ fn draw_hard_reset_animation(painter: &egui::Painter, rect: egui::Rect, t: f32) 
     // "RESET" text with glitch effect
     let text_size = 100.0 + ease_in_out * 20.0;
     let text_alpha = ((1.0 - ease_out * 0.2) * 255.0) as u8;
-    let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, text_alpha);
+    let _text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, text_alpha);
 
     let font_id = egui::FontId::proportional(text_size);
     let text = "RESET";
-    let galley = painter.layout_no_wrap(text.to_string(), font_id, text_color);
+    let galley = painter.layout_no_wrap(text.to_string(), font_id, _text_color);
     let text_pos = center - galley.size() / 2.0;
-    painter.galley(text_pos, galley, text_color);
+    painter.galley(text_pos, galley, _text_color);
 
     // Digital artifacts and static
     for i in 0..30 {
@@ -1142,7 +1238,7 @@ fn draw_reverse_question_animation(painter: &egui::Painter, rect: egui::Rect, t:
         let stream_t = (t * 2.0 - i as f32 * 0.1).clamp(0.0, 1.0);
         if stream_t > 0.0 {
             let angle = (i as f32 / 8.0) * 2.0 * std::f32::consts::PI;
-            let stream_length = ease_out * 300.0;
+            let _stream_length = ease_out * 300.0;
 
             for j in 0..10 {
                 let segment_t = (stream_t * 10.0 - j as f32).clamp(0.0, 1.0);
@@ -1164,10 +1260,10 @@ fn draw_reverse_question_animation(painter: &egui::Painter, rect: egui::Rect, t:
     let flip_progress = ease_in_out;
     let text_size = 80.0;
     let text_alpha = ((1.0 - ease_out * 0.2) * 255.0) as u8;
-    let text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, text_alpha);
+    let _text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, text_alpha);
 
     // Rotation effect for the symbols
-    let rotation = flip_progress * std::f32::consts::PI;
+    let _rotation = flip_progress * std::f32::consts::PI;
 
     let font_id = egui::FontId::proportional(text_size);
     let question_text = "?";

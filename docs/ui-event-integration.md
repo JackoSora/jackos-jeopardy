@@ -45,6 +45,7 @@ if event_animation.is_none() {
             GameEvent::DoublePoints => Duration::from_millis(3000),
             GameEvent::HardReset => Duration::from_millis(4000),
             GameEvent::ReverseQuestion => Duration::from_millis(2500),
+            GameEvent::ScoreSteal => Duration::from_millis(3200),
         };
         controller.start_animation(active_event.clone(), duration);
         event_animation = Some(controller);
@@ -185,9 +186,26 @@ egui::Area::new("event_animation_overlay".into())
             EventAnimationType::ReverseQuestionFlip => {
                 draw_reverse_question_animation(&painter, rect, t);
             }
+            EventAnimationType::ScoreStealHeist => {
+                // Render heist animation using context stored in GameState.event_state.last_steal
+                // The UI pulls names and +/- amounts from this context.
+            }
         }
     });
 ```
+
+### Score Steal Animation (`ScoreStealHeist`)
+
+**Duration**: ~3.2 seconds
+**Color Scheme**: Green/Gold highlights
+**Visual Elements**:
+- Dimmed backdrop, money bag traveling from leader to lowest team
+- Coin trail, expanding ripples
+- Team names rendered under each side and +/- amount labels
+
+**Implementation Notes**:
+- Uses `GameState.event_state.last_steal` for `thief_name`, `victim_name`, and `amount`.
+- The event is instantaneous in logic; only the animation plays during the transition.
 
 ## Memory Management
 
