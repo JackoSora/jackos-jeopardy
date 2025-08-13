@@ -203,13 +203,8 @@ pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameEngine> 
                         egui::Sense::click(),
                     );
                     let painter = ui.painter_at(rect);
-                    crate::ui::paint_enhanced_clue_cell(
-                        &painter,
-                        rect,
-                        clue.points,
-                        false, // not solved in config mode
-                        response.hovered(),
-                    );
+                    let is_filled = !clue.question.trim().is_empty() && !clue.answer.trim().is_empty();
+                    crate::ui::paint_config_clue_cell(&painter, rect, clue.points, is_filled, response.hovered());
                     if response.clicked() {
                         clicked = Some((col_idx, row_idx));
                     }

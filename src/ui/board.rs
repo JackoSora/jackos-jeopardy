@@ -178,3 +178,78 @@ pub fn paint_enhanced_category_header(
         egui::Stroke::new(3.0, adjust_brightness(Palette::MAGENTA, 1.2)),
     );
 }
+
+/// Config-mode clue cell rendering with fill-status indicators
+///
+/// - If `is_filled` is true (both question and answer provided), paint deep neon blue-ish look
+/// - If not, paint a warning red-ish look
+pub fn paint_config_clue_cell(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    points: u32,
+    is_filled: bool,
+    is_hovered: bool,
+) {
+    let rounding = 8.0;
+
+    // Choose palette based on completion state
+    let (bg_start, bg_end, border, text, glow_color) = if is_filled {
+        // Deep neon blue-ish
+        (
+            adjust_brightness(Palette::BG_ACTIVE, 1.25),
+            adjust_brightness(Palette::BG_ACTIVE, 1.05),
+            adjust_brightness(Palette::CYAN, 1.3),
+            adjust_brightness(Palette::TEXT, 1.15),
+            Palette::CYAN,
+        )
+    } else {
+        // Warning red-ish
+        (
+            adjust_brightness(Palette::BG_PANEL, 1.0),
+            adjust_brightness(Palette::BG_PANEL, 0.9),
+            adjust_brightness(Palette::MAGENTA, 0.9),
+            adjust_brightness(Palette::TEXT, 0.95),
+            adjust_brightness(Palette::MAGENTA, 0.9),
+        )
+    };
+
+    // Hover intensifies border/glow a bit
+    let border_width = if is_hovered { 3.0 } else { 2.0 };
+
+    // Background
+    paint_gradient_rect(painter, rect, bg_start, bg_end, true, rounding);
+
+    // Glow/border
+    let glow_strength = if is_filled { 0.45 } else { 0.35 } * if is_hovered { 1.2 } else { 1.0 };
+    let glow = GlowConfig::new(glow_color, glow_strength, 6.0);
+    paint_glow_rect(painter, rect, rounding, glow);
+
+    painter.rect_stroke(rect, rounding, egui::Stroke::new(border_width, border));
+
+    // Inner highlight for depth
+    let inner_rect = rect.shrink(3.0);
+    painter.rect_stroke(
+        inner_rect,
+        rounding - 2.0,
+        egui::Stroke::new(1.0, with_alpha(adjust_brightness(border, 1.4), 70)),
+    );
+
+    // Points text with subtle shadow
+    let font_size = if is_hovered { 22.0 } else { 20.0 };
+    let shadow_offset = egui::vec2(1.0, 1.0);
+    let shadow_color = with_alpha(egui::Color32::BLACK, 100);
+    painter.text(
+        rect.center() + shadow_offset,
+        egui::Align2::CENTER_CENTER,
+        format!("{}", points),
+        egui::FontId::proportional(font_size),
+        shadow_color,
+    );
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        format!("{}", points),
+        egui::FontId::proportional(font_size),
+        text,
+    );
+}

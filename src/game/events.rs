@@ -134,8 +134,8 @@ impl EventConfig {
             let w = match e {
                 GameEvent::DoublePoints => 50,
                 GameEvent::ReverseQuestion => 20,
-                GameEvent::ScoreSteal => 25,
-                GameEvent::HardReset => 5,
+                GameEvent::ScoreSteal => 20,
+                GameEvent::HardReset => 10,
             };
             events.push(e.clone());
             weights.push(w);
