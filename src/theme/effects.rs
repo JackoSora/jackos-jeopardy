@@ -6,7 +6,7 @@ use crate::theme::{
 use eframe::egui;
 
 /// Configuration for glow effects
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct GlowConfig {
     pub inner_color: egui::Color32,
     pub outer_color: egui::Color32,

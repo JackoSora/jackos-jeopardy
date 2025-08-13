@@ -1,12 +1,35 @@
 use eframe::egui;
 
-use crate::theme::{self, Palette};
-
 use crate::core::{Board, Category, ConfigState};
 use crate::game::GameEngine;
+use crate::theme::{self, Palette, TransitionController};
+use crate::ui::{BoardEditorTransitionSystem, CellId, CellManager, ConfigLayoutState};
+
+// Enhanced config UI state (stored in egui memory)
+#[derive(Clone)]
+struct EnhancedConfigUIState {
+    cell_manager: CellManager,
+    transition_system: BoardEditorTransitionSystem,
+    transition_controller: TransitionController,
+}
+
+impl Default for EnhancedConfigUIState {
+    fn default() -> Self {
+        Self {
+            cell_manager: CellManager::new(),
+            transition_system: BoardEditorTransitionSystem::new(),
+            transition_controller: TransitionController::new(),
+        }
+    }
+}
 
 pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameEngine> {
     let mut start_game: Option<GameEngine> = None;
+
+    // Get or create enhanced UI state
+    let ui_state_id = egui::Id::new("enhanced_config_ui_state");
+    let mut ui_state: EnhancedConfigUIState =
+        ctx.memory_mut(|m| m.data.get_temp(ui_state_id).unwrap_or_default());
 
     egui::SidePanel::left("config_left")
         .frame(theme::panel_frame())
@@ -21,7 +44,15 @@ pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameEngine> 
         });
 
     egui::CentralPanel::default().show(ctx, |ui| {
-        // layered background
+        // Update animations and check if repaint is needed
+        let needs_repaint =
+            ui_state.cell_manager.update_animations() || ui_state.transition_system.update();
+
+        if needs_repaint {
+            ctx.request_repaint();
+        }
+
+        // Enhanced background with smooth transitions
         crate::theme::paint_board_background(ui);
         ui.heading(egui::RichText::new("Board Layout").color(Palette::CYAN));
 
@@ -37,98 +68,98 @@ pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameEngine> 
         let spacing_x = ui.spacing().item_spacing.x;
         let total_spacing = spacing_x * (cols.saturating_sub(1)) as f32;
         let col_w = ((available.x - total_spacing) / cols as f32).max(140.0);
-        let header_h = 28.0;
-        let cell_h = 64.0;
+        let header_h = 40.0; // Increased for better visual hierarchy
+        let cell_h = 80.0; // Increased for enhanced cells
 
-        // Headers (editable category titles)
+        // Enhanced category headers with smooth transitions
         ui.horizontal(|ui| {
             ui.set_width(available.x);
             for (ci, category) in state.board.categories.iter_mut().enumerate() {
-                let (rect, _) =
+                let (rect, response) =
                     ui.allocate_exact_size(egui::vec2(col_w, header_h), egui::Sense::hover());
-                let painter = ui.painter_at(rect);
-                painter.rect_filled(rect, 6.0, Palette::BG_ACTIVE);
+
+                // Use enhanced category header rendering
+                crate::ui::paint_enhanced_category_header(
+                    &ui.painter_at(rect),
+                    rect,
+                    &format!("Category {}", ci + 1),
+                );
+
+                // Enhanced title editing with better visual feedback
                 let mut title = category.name.clone();
-                let galley = ui.painter().layout_no_wrap(
-                    format!("Category {}:", ci + 1),
-                    egui::FontId::proportional(13.0),
-                    Palette::CYAN,
-                );
-                painter.galley(
-                    rect.left_top() + egui::vec2(6.0, 6.0),
-                    galley,
-                    egui::Color32::TRANSPARENT,
-                );
-                // Inline editor overlay
                 let edit_rect = egui::Rect::from_min_size(
-                    rect.left_top() + egui::vec2(6.0, 24.0),
-                    egui::vec2(col_w - 12.0, header_h - 26.0),
+                    rect.center() - egui::vec2(col_w * 0.4, 8.0),
+                    egui::vec2(col_w * 0.8, 16.0),
                 );
-                let resp = ui.put(
+
+                let title_response = ui.put(
                     edit_rect,
-                    egui::TextEdit::singleline(&mut title).hint_text("Name"),
+                    egui::TextEdit::singleline(&mut title)
+                        .hint_text("Category Name")
+                        .font(egui::FontId::proportional(14.0)),
                 );
-                if resp.changed() {
+
+                if title_response.changed() {
                     category.name = title;
                 }
             }
         });
 
-        // Rows of clues (question/answer)
+        // Enhanced cells with proper visual boundaries and content separation
         for row_idx in 0..rows {
             ui.horizontal(|ui| {
                 ui.set_width(available.x);
-                for category in state.board.categories.iter_mut() {
+                for (col_idx, category) in state.board.categories.iter_mut().enumerate() {
+                    let cell_id: CellId = (col_idx, row_idx);
                     let (rect, _) =
                         ui.allocate_exact_size(egui::vec2(col_w, cell_h), egui::Sense::hover());
-                    let painter = ui.painter_at(rect);
-                    painter.rect_filled(rect, 6.0, Palette::BG_PANEL);
-                    painter.rect_stroke(
-                        rect.expand(1.0),
-                        6.0,
-                        egui::Stroke::new(1.0, Palette::CYAN),
+
+                    // Update cell state based on content
+                    ui_state.cell_manager.update_cell_state(
+                        cell_id,
+                        &category.clues[row_idx].question,
+                        &category.clues[row_idx].answer,
                     );
 
-                    // Inset fields
-                    let inner = rect.shrink2(egui::vec2(6.0, 8.0));
-                    let left = egui::Rect::from_min_max(
-                        inner.min,
-                        egui::pos2(inner.min.x + 70.0, inner.max.y),
-                    );
-                    let right = egui::Rect::from_min_max(
-                        egui::pos2(left.max.x + 6.0, inner.min.y),
-                        inner.max,
-                    );
-                    ui.put(
-                        left,
-                        egui::Label::new(
-                            egui::RichText::new(format!(
-                                "{:>3} pts",
-                                category.clues[row_idx].points
-                            ))
-                            .color(Palette::MAGENTA),
+                    // Render enhanced cell with proper content separation
+                    let mut question = category.clues[row_idx].question.clone();
+                    let mut answer = category.clues[row_idx].answer.clone();
+
+                    let cell_response = {
+                        let cell = ui_state.cell_manager.get_or_create_cell(cell_id);
+                        cell.render(
+                            ui,
+                            rect,
+                            category.clues[row_idx].points,
+                            &mut question,
+                            &mut answer,
                         )
-                        .wrap(false),
-                    );
-                    ui.put(
-                        right.split_top_bottom_at_y(right.min.y + 24.0).0,
-                        egui::TextEdit::singleline(&mut category.clues[row_idx].question)
-                            .hint_text("Question"),
-                    );
-                    ui.put(
-                        right.split_top_bottom_at_y(right.min.y + 24.0).1,
-                        egui::TextEdit::singleline(&mut category.clues[row_idx].answer)
-                            .hint_text("Answer"),
-                    );
+                    };
+
+                    // Update category data if cell content changed
+                    if cell_response.question_changed {
+                        category.clues[row_idx].question = question;
+                    }
+                    if cell_response.answer_changed {
+                        category.clues[row_idx].answer = answer;
+                    }
+
+                    // Handle cell interactions
+                    ui_state
+                        .cell_manager
+                        .handle_cell_response(cell_id, cell_response);
                 }
             });
         }
 
+        // Enhanced control buttons with smooth transitions
+        ui.add_space(12.0);
         ui.separator();
+        ui.add_space(8.0);
+
         ui.horizontal(|ui| {
             if theme::accent_button(ui, "Add Category").clicked() {
                 if state.board.categories.len() >= 10 {
-                    // soft limit: show toast-like label
                     ui.label(egui::RichText::new("Max 10 categories").color(egui::Color32::YELLOW));
                 } else {
                     let rows = state
@@ -138,18 +169,42 @@ pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameEngine> 
                         .map(|c| c.clues.len())
                         .unwrap_or(5);
                     state.board.categories.push(Category {
-                        name: "New".into(),
+                        name: "New Category".into(),
                         clues: Board::default_with_dimensions(1, rows)
                             .categories
                             .remove(0)
                             .clues,
                     });
+
+                    // Trigger layout transition for new category
+                    ui_state
+                        .transition_system
+                        .transition_to(ConfigLayoutState::EditorView);
                 }
             }
+
+            ui.add_space(8.0);
+
             if cols > 0 && theme::danger_button(ui, "Remove Last").clicked() {
                 state.board.categories.pop();
+
+                // Clean up unused cells
+                let valid_ids: Vec<CellId> = (0..state.board.categories.len())
+                    .flat_map(|col| (0..rows).map(move |row| (col, row)))
+                    .collect();
+                ui_state.cell_manager.cleanup_unused_cells(&valid_ids);
+
+                // Trigger layout transition
+                ui_state
+                    .transition_system
+                    .transition_to(ConfigLayoutState::BoardView);
             }
         });
+    });
+
+    // Store enhanced UI state back to memory
+    ctx.memory_mut(|m| {
+        m.data.insert_temp(ui_state_id, ui_state);
     });
 
     start_game

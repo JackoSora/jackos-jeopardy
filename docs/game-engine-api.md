@@ -62,8 +62,11 @@ pub enum GameEvent {
     DoublePoints,    // Next correct answer awards double points, incorrect loses double
     HardReset,       // All team scores reset to zero immediately
     ReverseQuestion, // Next clue has question and answer swapped
+    ScoreSteal,      // Lowest score team steals 20% from highest score team
 }
 ```
+
+**Current Configuration**: The event system is currently configured to heavily favor Hard Reset events (100% selection weight) while other events are disabled (0% weight). This creates a more dramatic gameplay experience where score resets occur predictably every 4 questions.
 
 ### Event State Management
 The event system tracks questions answered and manages active events:
@@ -97,7 +100,7 @@ pub enum EventAnimationType {
 
 pub enum AnimationPhase {
     Intro,  // 0-20% of animation
-    Main,   // 20-80% of animation  
+    Main,   // 20-80% of animation
     Outro,  // 80-100% of animation
 }
 ```
@@ -106,12 +109,13 @@ pub enum AnimationPhase {
 Events are automatically triggered when:
 - Question count reaches multiples of 4 (4, 8, 12, etc.)
 - No event is currently active or queued
-- Random selection from available event types
+- **Weighted selection heavily favoring Hard Reset events (100% weight vs 0% for others)**
 
 Event effects are applied during gameplay:
-- **Double Points**: Modifies scoring for the next question only
-- **Hard Reset**: Immediately resets all team scores to zero
-- **Reverse Question**: Swaps question/answer text for the next selected clue
+- **Double Points**: Modifies scoring for the next question only *(currently disabled)*
+- **Hard Reset**: Immediately resets all team scores to zero *(primary active event)*
+- **Reverse Question**: Swaps question/answer text for the next selected clue *(currently disabled)*
+- **Score Steal**: Transfers 20% of points from highest to lowest scoring team *(currently disabled)*
 
 ### Event Timing and Animation
 Events use a sophisticated queuing system:
@@ -410,20 +414,26 @@ let mut event_animation: Option<EventAnimationController> = ui
 #### Event Animation Types
 Each event type has a unique visual animation:
 
-- **Double Points** (`EventAnimationType::DoublePointsMultiplication`):
+- **Hard Reset** (`EventAnimationType::HardResetGlitch`) - **Primary Active Animation**:
+  - 4-second Matrix-style animation with falling terminal commands
+  - Shows green digital rain effect with "SYSTEM RESET" message
+  - System reboot sequence with progressive loading lines
+  - Enhanced with realistic terminal commands and authentic monospace typography
+
+- **Double Points** (`EventAnimationType::DoublePointsMultiplication`) - *Currently Unused*:
   - 3-second cyan/blue animation with scaling effects
   - Displays "×2" symbol with energy bursts and pulsing rings
   - Point multiplication visualization with particle effects
 
-- **Hard Reset** (`EventAnimationType::HardResetGlitch`):
-  - 4-second red glitch animation with screen distortion
-  - Shows "RESET" text with digital artifacts and static effects
-  - System reboot sequence with progressive loading lines
-
-- **Reverse Question** (`EventAnimationType::ReverseQuestionFlip`):
+- **Reverse Question** (`EventAnimationType::ReverseQuestionFlip`) - *Currently Unused*:
   - 2.5-second purple animation with data stream effects
   - Text flipping animation showing "?" transforming to "!"
   - Holographic distortion and mirror effects
+
+- **Score Steal** (`EventAnimationType::ScoreStealHeist`) - *Currently Unused*:
+  - 3.2-second heist-themed animation with money bag transfer
+  - Shows point transfer between teams with visual effects
+  - Displays team names and transfer amounts
 
 #### Animation Lifecycle
 ```rust
@@ -467,3 +477,15 @@ let interaction_blocked = flash.is_some() || pending_answer.is_some() || event_a
 ```
 
 This architecture ensures that all game logic is centralized and testable while providing a clean interface for the UI layer with rich visual feedback for the event system.
+
+## Recent Changes
+
+### UI Layer Simplification (Latest Update)
+
+The UI layer has been simplified to improve separation of concerns:
+
+- **Phase Transition Management**: Removed explicit phase transition handling from the UI layer. Phase changes are now managed entirely by the game engine through action processing.
+- **Memory Management**: Simplified flash animation and pending action cleanup. The UI no longer needs to manually manage phase transition memory cleanup.
+- **State Synchronization**: The UI now responds to game state changes rather than managing state transitions directly, improving architectural clarity.
+
+These changes reduce UI complexity while maintaining all functionality, making the codebase more maintainable and reducing the potential for UI-layer bugs.

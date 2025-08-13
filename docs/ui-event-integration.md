@@ -68,8 +68,8 @@ if let Some(mut controller) = event_animation.take() {
 
 ### Double Points Animation (`DoublePointsMultiplication`)
 
-**Duration**: 3 seconds  
-**Color Scheme**: Cyan/Blue with white highlights  
+**Duration**: 3 seconds
+**Color Scheme**: Cyan/Blue with white highlights
 **Visual Elements**:
 - Large "×2" text in center with scaling effect
 - Energy bursts radiating from center
@@ -93,37 +93,38 @@ fn draw_double_points_animation(painter: &egui::Painter, rect: egui::Rect, t: f3
 
 ### Hard Reset Animation (`HardResetGlitch`)
 
-**Duration**: 4 seconds  
-**Color Scheme**: Red error colors transitioning to normal  
+**Duration**: 4 seconds
+**Color Scheme**: Matrix green with dark background
 **Visual Elements**:
-- Screen glitching and distortion effects
-- "RESET" text with digital artifacts
-- Static noise and screen tears
-- System reboot sequence with loading lines
-- Progressive fade from red to normal colors
+- Falling terminal commands in multiple columns
+- Green digital rain characters (0-9, A-F)
+- "SYSTEM RESET" message with glow effect
+- Monospace font for authentic terminal look
+- Varying fall speeds and stream delays
 
 **Implementation**:
 ```rust
 fn draw_hard_reset_animation(painter: &egui::Painter, rect: egui::Rect, t: f32) {
-    // Red error overlay with fade
-    let base_color = egui::Color32::from_rgba_unmultiplied(255, 0, 50, base_alpha);
-    painter.rect_filled(rect, 0.0, base_color);
+    // Dark green background
+    let bg_color = egui::Color32::from_rgba_unmultiplied(0, 20, 0, bg_alpha);
+    painter.rect_filled(rect, 0.0, bg_color);
 
-    // Screen glitching effect
-    if t < 0.6 {
-        let glitch_intensity = (0.6 - t) / 0.6;
-        // ... glitch rectangles with offset
+    // Falling terminal commands in columns
+    let terminal_commands = ["rm -rf /scores/*", "sudo reset --all", ...];
+    for col in 0..columns {
+        // Multiple streams per column with varying speeds
+        // Matrix green text with fade effects
     }
-    
-    // "RESET" text and system reboot sequence
-    // ... digital artifacts and loading lines
+
+    // Central "SYSTEM RESET" message with glow
+    // Digital rain characters for extra Matrix effect
 }
 ```
 
 ### Reverse Question Animation (`ReverseQuestionFlip`)
 
-**Duration**: 2.5 seconds  
-**Color Scheme**: Purple/Magenta with flowing effects  
+**Duration**: 2.5 seconds
+**Color Scheme**: Purple/Magenta with flowing effects
 **Visual Elements**:
 - Flowing data streams in circular patterns
 - Text flipping effect ("?" → "!")
@@ -142,7 +143,7 @@ fn draw_reverse_question_animation(painter: &egui::Painter, rect: egui::Rect, t:
     for i in 0..8 {
         // ... circular particle streams
     }
-    
+
     // Flipping text effect and holographic distortion
     // ... "?" to "!" transition with mirror effects
 }
@@ -157,12 +158,16 @@ During event animations, the UI blocks user interactions to ensure proper event 
 ```rust
 let interaction_blocked = flash.is_some() || pending_answer.is_some() || event_animation.is_some();
 
-if enhanced_modal_button(ui, "Correct", ModalButtonType::Correct).clicked() 
-    && !interaction_blocked 
+if enhanced_modal_button(ui, "Correct", ModalButtonType::Correct).clicked()
+    && !interaction_blocked
 {
     // Handle button click only when not blocked
 }
 ```
+
+### Phase Transition Handling
+
+The UI layer has been simplified to remove explicit phase transition management. Phase changes are now handled entirely by the game engine through action processing, with the UI responding to state changes rather than managing transitions directly. This improves separation of concerns and reduces UI complexity.
 
 ### Animation Overlay Rendering
 
@@ -227,6 +232,7 @@ if let Some(controller) = event_animation {
 - Animation controllers are automatically cleaned up when animations complete
 - Memory is released immediately after animation completion
 - No persistent animation state is maintained beyond the animation duration
+- Phase transition memory management has been simplified - flash animations and pending actions are now cleaned up automatically when animations complete, without requiring explicit phase transition handling
 
 ## Performance Considerations
 

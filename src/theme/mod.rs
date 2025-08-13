@@ -5,14 +5,17 @@ pub mod colors;
 pub mod effects;
 pub mod frames;
 pub mod performance;
+pub mod transitions;
 pub mod utils;
 
 // Re-export commonly used items for convenience
+pub use animations::{AnimationController, AnimationState, EasingFunction};
 pub use buttons::{
     ModalButtonType, accent_button, danger_button, enhanced_modal_button, secondary_button,
 };
 pub use colors::Palette;
 pub use frames::{panel_frame, window_frame};
+pub use transitions::{AnimationHandle, TransitionController, TransitionType};
 pub use utils::adjust_brightness;
 
 use eframe::egui;

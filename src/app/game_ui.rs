@@ -81,7 +81,6 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                             GameActionResult::StateChanged { new_phase, .. } => {
                                 requested_phase = Some(new_phase)
                             }
-                            
                         }
                     }
                 }
@@ -182,7 +181,6 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                                 GameActionResult::StateChanged { new_phase, .. } => {
                                     requested_phase = Some(new_phase)
                                 }
-                                
                             }
                         }
                     }
@@ -269,23 +267,6 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
             }
         }
 
-        if let Some(p) = requested_phase {
-            game_engine.get_state_mut().phase = p;
-            ui.memory_mut(|m| {
-                // Preserve active flash animation so it can finish after phase switch (e.g. Steal -> Resolved)
-                if let Some(active) = flash {
-                    m.data.insert_temp(flash_id, Some(active));
-                } else {
-                    m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id);
-                }
-                // Pending answer and steal only used in their respective phases
-                m.data
-                    .remove::<Option<(AnswerFlash, (usize, usize), u32)>>(pending_answer_id);
-                m.data
-                    .remove::<Option<(StealOutcome, (usize, usize), u32)>>(pending_steal_id);
-            });
-        }
-
         if let Some((kind, start)) = flash {
             let elapsed = start.elapsed();
             let duration = Duration::from_millis(1200); // Extended duration for more expressive animation
@@ -339,7 +320,6 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                                 // Effects already represented visually by animation; nothing extra for now
                                 let _ = effects; // suppress unused warning if any
                             }
-                            
                         }
                     }
                 }
@@ -364,7 +344,6 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                                 // Effects already represented visually by animation; nothing extra for now
                                 let _ = effects; // suppress unused warning if any
                             }
-                            
                         }
                     }
                 }
@@ -421,11 +400,7 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                                         &painter,
                                         rect,
                                         t,
-                                        game_engine
-                                            .get_state()
-                                            .event_state
-                                            .last_steal
-                                            .as_ref(),
+                                        game_engine.get_state().event_state.last_steal.as_ref(),
                                     );
                                 }
                             }
@@ -488,6 +463,24 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
             ui.memory_mut(|m| {
                 m.data
                     .remove::<Option<EventAnimationController>>(event_animation_id)
+            });
+        }
+
+        // Apply any requested phase changes at the end
+        if let Some(p) = requested_phase {
+            game_engine.get_state_mut().phase = p;
+            ui.memory_mut(|m| {
+                // Preserve active flash animation so it can finish after phase switch (e.g. Steal -> Resolved)
+                if let Some(active) = flash {
+                    m.data.insert_temp(flash_id, Some(active));
+                } else {
+                    m.data.remove::<Option<(AnswerFlash, Instant)>>(flash_id);
+                }
+                // Pending answer and steal only used in their respective phases
+                m.data
+                    .remove::<Option<(AnswerFlash, (usize, usize), u32)>>(pending_answer_id);
+                m.data
+                    .remove::<Option<(StealOutcome, (usize, usize), u32)>>(pending_steal_id);
             });
         }
     });
@@ -609,7 +602,11 @@ fn draw_score_steal_animation(
 ) {
     let center = rect.center();
     let ease_out = 1.0 - (1.0 - t).powf(3.0);
-    let ease_in_out = if t < 0.5 { 2.0 * t * t } else { 1.0 - 2.0 * (1.0 - t).powf(2.0) };
+    let ease_in_out = if t < 0.5 {
+        2.0 * t * t
+    } else {
+        1.0 - 2.0 * (1.0 - t).powf(2.0)
+    };
 
     // Dim backdrop
     let base_alpha = ((0.55 - ease_out * 0.25) * 255.0) as u8;
@@ -654,7 +651,11 @@ fn draw_score_steal_animation(
             let x = victim_pos.x + (thief_pos.x - victim_pos.x) * p + (i as f32 * 7.0).sin() * 6.0;
             let y = victim_pos.y - (p * 80.0) + (i as f32 * 13.0).cos() * 4.0;
             let a = ((1.0 - p) * 200.0) as u8;
-            painter.circle_filled(egui::pos2(x, y), 8.0, egui::Color32::from_rgba_unmultiplied(255, 215, 0, a));
+            painter.circle_filled(
+                egui::pos2(x, y),
+                8.0,
+                egui::Color32::from_rgba_unmultiplied(255, 215, 0, a),
+            );
         }
     }
 
@@ -663,15 +664,43 @@ fn draw_score_steal_animation(
         let name_font = egui::FontId::proportional(28.0);
         let amt_font = egui::FontId::proportional(34.0);
 
-        let victim_g = painter.layout_no_wrap(ctx.victim_name.clone(), name_font.clone(), egui::Color32::WHITE);
-        painter.galley(victim_pos + egui::vec2(-victim_g.size().x / 2.0, 80.0), victim_g, egui::Color32::WHITE);
-        let victim_amt = painter.layout_no_wrap(format!("-{}", ctx.amount), amt_font.clone(), egui::Color32::from_rgb(255, 80, 80));
-        painter.galley(victim_pos + egui::vec2(-victim_amt.size().x / 2.0, 110.0), victim_amt, egui::Color32::from_rgb(255, 80, 80));
+        let victim_g = painter.layout_no_wrap(
+            ctx.victim_name.clone(),
+            name_font.clone(),
+            egui::Color32::WHITE,
+        );
+        painter.galley(
+            victim_pos + egui::vec2(-victim_g.size().x / 2.0, 80.0),
+            victim_g,
+            egui::Color32::WHITE,
+        );
+        let victim_amt = painter.layout_no_wrap(
+            format!("-{}", ctx.amount),
+            amt_font.clone(),
+            egui::Color32::from_rgb(255, 80, 80),
+        );
+        painter.galley(
+            victim_pos + egui::vec2(-victim_amt.size().x / 2.0, 110.0),
+            victim_amt,
+            egui::Color32::from_rgb(255, 80, 80),
+        );
 
-        let thief_g = painter.layout_no_wrap(ctx.thief_name.clone(), name_font.clone(), egui::Color32::WHITE);
-        painter.galley(thief_pos + egui::vec2(-thief_g.size().x / 2.0, 80.0), thief_g, egui::Color32::WHITE);
+        let thief_g = painter.layout_no_wrap(
+            ctx.thief_name.clone(),
+            name_font.clone(),
+            egui::Color32::WHITE,
+        );
+        painter.galley(
+            thief_pos + egui::vec2(-thief_g.size().x / 2.0, 80.0),
+            thief_g,
+            egui::Color32::WHITE,
+        );
         let thief_amt = painter.layout_no_wrap(format!("+{}", ctx.amount), amt_font, green);
-        painter.galley(thief_pos + egui::vec2(-thief_amt.size().x / 2.0, 110.0), thief_amt, green);
+        painter.galley(
+            thief_pos + egui::vec2(-thief_amt.size().x / 2.0, 110.0),
+            thief_amt,
+            green,
+        );
     }
 
     // Accenting ripples
@@ -679,7 +708,11 @@ fn draw_score_steal_animation(
         let p = (t * 1.3 - i as f32 * 0.15).clamp(0.0, 1.0);
         if p > 0.0 {
             let a = ((1.0 - p) * 90.0) as u8;
-            painter.circle_stroke(center, p * rect.width() * 0.45, egui::Stroke::new(2.0, egui::Color32::from_rgba_unmultiplied(0, 220, 120, a)));
+            painter.circle_stroke(
+                center,
+                p * rect.width() * 0.45,
+                egui::Stroke::new(2.0, egui::Color32::from_rgba_unmultiplied(0, 220, 120, a)),
+            );
         }
     }
 }
@@ -869,7 +902,6 @@ fn draw_resolved_overlay(
                                     GameActionResult::StateChanged { new_phase, .. } => {
                                         *requested_phase = Some(new_phase)
                                     }
-                                    
                                 }
                             }
                             ui.ctx().request_repaint();
@@ -1135,83 +1167,197 @@ fn draw_double_points_animation(painter: &egui::Painter, rect: egui::Rect, t: f3
 fn draw_hard_reset_animation(painter: &egui::Painter, rect: egui::Rect, t: f32) {
     let center = rect.center();
 
-    // Easing functions
-    let ease_out = 1.0 - (1.0 - t).powf(3.0);
-    let ease_in_out = if t < 0.5 {
-        2.0 * t * t
-    } else {
-        1.0 - 2.0 * (1.0 - t).powf(2.0)
-    };
+    // Matrix-style terminal commands that will fall down - expanded list
+    let terminal_commands = [
+        "rm -rf /scores/*",
+        "sudo reset --all",
+        "killall -9 points",
+        "systemctl stop game",
+        "echo 'RESET' > /dev/null",
+        "clear && reset",
+        "shutdown -r now",
+        "init 0",
+        "halt --force",
+        "reboot --hard",
+        "dd if=/dev/zero of=/scores",
+        "format c: /q",
+        "DELETE FROM scores;",
+        "DROP TABLE points;",
+        "TRUNCATE teams;",
+        "git reset --hard HEAD",
+        "npm run reset",
+        "make clean",
+        "cargo clean",
+        "./reset.sh --force",
+        "pkill -f jeopardy",
+        "service game stop",
+        "rm -f /tmp/scores.db",
+        "echo '' > scores.log",
+        "truncate -s 0 game.db",
+        "redis-cli FLUSHALL",
+        "mysql -e 'RESET MASTER'",
+        "psql -c 'DROP SCHEMA public CASCADE'",
+        "mongo --eval 'db.dropDatabase()'",
+        "curl -X DELETE /api/scores",
+        "wget -O- reset.example.com",
+        "python3 reset_game.py",
+        "node reset-scores.js",
+        "java -jar reset.jar",
+        "docker stop game-container",
+        "kubectl delete pods --all",
+        "terraform destroy -auto-approve",
+        "ansible-playbook reset.yml",
+        "chef-client --runlist reset",
+        "puppet apply reset.pp",
+        "systemctl mask game.service",
+        "crontab -r",
+        "at -r $(atq | cut -f1)",
+        "screen -wipe",
+        "tmux kill-server",
+        "pkill -u gameuser",
+        "userdel -r gameuser",
+        "groupdel gamegroup",
+        "chmod 000 /game/*",
+        "chattr +i /scores",
+        "mount -o remount,ro /game",
+    ];
 
-    // Red error colors transitioning to normal
-    let base_alpha = if t < 0.7 {
-        ((0.8 - t * 0.5) * 255.0) as u8
+    // Dark green background with fade effect
+    let bg_alpha = if t < 0.1 {
+        (t * 10.0 * 80.0) as u8
+    } else if t > 0.9 {
+        ((1.0 - t) * 10.0 * 80.0) as u8
     } else {
-        ((0.8 - 0.7 * 0.5) * (1.0 - (t - 0.7) / 0.3) * 255.0) as u8
+        80
     };
-    let base_color = egui::Color32::from_rgba_unmultiplied(255, 0, 50, base_alpha);
-    painter.rect_filled(rect, 0.0, base_color);
+    let bg_color = egui::Color32::from_rgba_unmultiplied(0, 20, 0, bg_alpha);
+    painter.rect_filled(rect, 0.0, bg_color);
 
-    // Screen glitching effect
-    if t < 0.6 {
-        let glitch_intensity = (0.6 - t) / 0.6;
-        for i in 0..20 {
-            let y = (i as f32 / 20.0) * rect.height() + rect.min.y;
-            let glitch_offset = (glitch_intensity * 50.0 * (t * 10.0 + i as f32).sin()) as f32;
-            let glitch_rect = egui::Rect::from_min_size(
-                egui::Pos2::new(rect.min.x + glitch_offset, y),
-                egui::Vec2::new(rect.width(), rect.height() / 20.0),
-            );
-            let glitch_alpha = (glitch_intensity * 100.0) as u8;
-            let glitch_color = egui::Color32::from_rgba_unmultiplied(255, 100, 100, glitch_alpha);
-            painter.rect_filled(glitch_rect, 0.0, glitch_color);
+    // Calculate number of columns based on screen width
+    let char_width = 6.0; // Narrower columns for more density
+    let columns = (rect.width() / char_width) as usize;
+    let column_width = rect.width() / columns as f32;
+
+    // Draw falling terminal commands in columns
+    for col in 0..columns {
+        let x = rect.min.x + col as f32 * column_width;
+
+        // Each column has multiple falling streams - increased for more density
+        for stream in 0..6 {
+            let stream_offset = stream as f32 * 0.16; // Tighter spacing
+            let fall_speed = 800.0 + (col * 17 + stream * 23) as f32 % 400.0; // Much faster speeds
+            let start_delay = (col as f32 * 0.02 + stream_offset * 0.05) % 0.2; // Earlier starts
+
+            let adjusted_t = (t - start_delay).max(0.0);
+            if adjusted_t <= 0.0 {
+                continue;
+            }
+
+            let fall_distance = adjusted_t * fall_speed;
+            let stream_y = rect.min.y - 200.0 + fall_distance; // Start higher up
+
+            // Draw multiple commands in this stream - increased density
+            for cmd_idx in 0..15 {
+                let cmd_y = stream_y + cmd_idx as f32 * 18.0; // Tighter vertical spacing
+
+                // Skip if command is outside visible area
+                if cmd_y < rect.min.y - 50.0 || cmd_y > rect.max.y + 50.0 {
+                    continue;
+                }
+
+                // Select command based on column and stream
+                let command_index = (col * 3 + stream + cmd_idx * 7) % terminal_commands.len();
+                let command = terminal_commands[command_index];
+
+                // Calculate alpha based on position and time
+                let alpha = if cmd_y < rect.min.y {
+                    0.0
+                } else if cmd_y > rect.max.y {
+                    ((rect.max.y + 50.0 - cmd_y) / 50.0).max(0.0)
+                } else {
+                    // Fade effect within visible area
+                    let fade_factor = 1.0 - (cmd_y - rect.min.y) / rect.height() * 0.3;
+                    fade_factor.max(0.3)
+                };
+
+                if alpha <= 0.0 {
+                    continue;
+                }
+
+                // Matrix green color with varying intensity
+                let intensity = (128.0
+                    + 127.0 * ((col as f32 * 0.1 + adjusted_t * 2.0).sin() * 0.5 + 0.5))
+                    as u8;
+                let green_alpha = (alpha * 255.0) as u8;
+                let text_color =
+                    egui::Color32::from_rgba_unmultiplied(0, intensity, 0, green_alpha);
+
+                // Use monospace font for terminal look
+                let font_size = 12.0;
+                let font_id = egui::FontId::monospace(font_size);
+
+                // Truncate command to fit column width
+                let max_chars = (column_width / char_width) as usize;
+                let display_text = if command.len() > max_chars {
+                    &command[..max_chars.min(command.len())]
+                } else {
+                    command
+                };
+
+                let galley = painter.layout_no_wrap(display_text.to_string(), font_id, text_color);
+                let text_pos = egui::pos2(x, cmd_y);
+                painter.galley(text_pos, galley, text_color);
+            }
         }
     }
 
-    // "RESET" text with glitch effect
-    let text_size = 100.0 + ease_in_out * 20.0;
-    let text_alpha = ((1.0 - ease_out * 0.2) * 255.0) as u8;
-    let _text_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, text_alpha);
+    // Central "SYSTEM RESET" message that appears after initial cascade
+    if t > 0.4 {
+        let message_t = ((t - 0.4) / 0.6).clamp(0.0, 1.0);
+        let pulse = (message_t * 8.0).sin() * 0.3 + 0.7;
 
-    let font_id = egui::FontId::proportional(text_size);
-    let text = "RESET";
-    let galley = painter.layout_no_wrap(text.to_string(), font_id, _text_color);
-    let text_pos = center - galley.size() / 2.0;
-    painter.galley(text_pos, galley, _text_color);
+        let text_size = 48.0;
+        let text_alpha = (message_t * pulse * 255.0) as u8;
+        let text_color = egui::Color32::from_rgba_unmultiplied(0, 255, 100, text_alpha);
 
-    // Digital artifacts and static
-    for i in 0..30 {
-        let artifact_t = (t * 3.0 - i as f32 * 0.05).clamp(0.0, 1.0);
-        if artifact_t > 0.0 {
-            let x = (i as f32 * 123.456).fract() * rect.width() + rect.min.x;
-            let y = (i as f32 * 789.123).fract() * rect.height() + rect.min.y;
-            let size = (1.0 - artifact_t) * 8.0 + 2.0;
+        let font_id = egui::FontId::monospace(text_size);
+        let text = "SYSTEM RESET";
+        let galley = painter.layout_no_wrap(text.to_string(), font_id, text_color);
+        let text_pos = center - galley.size() / 2.0;
 
-            let artifact_alpha = ((1.0 - artifact_t) * 200.0) as u8;
-            let artifact_color =
-                egui::Color32::from_rgba_unmultiplied(255, 255, 255, artifact_alpha);
-            painter.rect_filled(
-                egui::Rect::from_center_size(egui::Pos2::new(x, y), egui::Vec2::splat(size)),
-                0.0,
-                artifact_color,
-            );
+        // Add a subtle glow effect
+        for offset in &[(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+            let glow_pos = text_pos + egui::vec2(offset.0, offset.1);
+            let glow_color = egui::Color32::from_rgba_unmultiplied(0, 100, 50, text_alpha / 3);
+            painter.galley(glow_pos, galley.clone(), glow_color);
         }
+
+        painter.galley(text_pos, galley, text_color);
     }
 
-    // System reboot sequence lines
-    if t > 0.3 {
-        let line_t = ((t - 0.3) / 0.7).clamp(0.0, 1.0);
-        for i in 0..5 {
-            let line_progress = (line_t * 5.0 - i as f32).clamp(0.0, 1.0);
-            if line_progress > 0.0 {
-                let y = center.y + (i as f32 - 2.0) * 30.0;
-                let line_width = line_progress * rect.width() * 0.8;
-                let line_start = egui::Pos2::new(center.x - line_width / 2.0, y);
-                let line_end = egui::Pos2::new(center.x + line_width / 2.0, y);
+    // Add some random "digital rain" characters for extra Matrix effect
+    if t > 0.1 {
+        let rain_chars = [
+            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
+        ];
+        for i in 0..150 {
+            // Tripled the number of rain characters
+            let char_t = (t * 4.0 - i as f32 * 0.01).clamp(0.0, 1.0); // Faster and denser
+            if char_t > 0.0 {
+                let x = (i as f32 * 73.456).fract() * rect.width() + rect.min.x;
+                let y = rect.min.y + char_t * rect.height() * 1.5; // Fall further down
 
-                let line_alpha = (line_progress * 255.0) as u8;
-                let line_color = egui::Color32::from_rgba_unmultiplied(0, 255, 100, line_alpha);
-                painter.line_segment([line_start, line_end], egui::Stroke::new(3.0, line_color));
+                if y > rect.min.y && y < rect.max.y + 20.0 {
+                    let char_index = ((i as f32 * 17.234 + t * 10.0) as usize) % rain_chars.len();
+                    let ch = rain_chars[char_index];
+
+                    let alpha = ((1.0 - char_t) * 150.0) as u8;
+                    let char_color = egui::Color32::from_rgba_unmultiplied(0, 200, 0, alpha);
+
+                    let font_id = egui::FontId::monospace(10.0);
+                    let galley = painter.layout_no_wrap(ch.to_string(), font_id, char_color);
+                    painter.galley(egui::pos2(x, y), galley, char_color);
+                }
             }
         }
     }

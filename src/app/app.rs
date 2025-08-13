@@ -6,6 +6,7 @@ use crate::core::storage::{self, Snapshot};
 use crate::core::{Board, ConfigState};
 use crate::game::GameEngine;
 use crate::theme::{self, Palette};
+use crate::ui::{HeaderAnimationManager, HeaderState};
 
 #[derive(Debug)]
 pub enum AppMode {
@@ -19,6 +20,8 @@ pub struct PartyJeopardyApp {
     show_save_dialog: bool,
     show_load_dialog: bool,
     save_name: String,
+    // Enhanced UI systems
+    header_animation_manager: HeaderAnimationManager,
 }
 
 impl PartyJeopardyApp {
@@ -33,12 +36,31 @@ impl PartyJeopardyApp {
             show_save_dialog: false,
             show_load_dialog: false,
             save_name: String::new(),
+            header_animation_manager: HeaderAnimationManager::new(),
         }
     }
 }
 
 impl eframe::App for PartyJeopardyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Update header animations
+        let header_needs_repaint = self.header_animation_manager.update();
+        if header_needs_repaint {
+            ctx.request_repaint();
+        }
+
+        // Determine current header state based on app mode
+        let target_header_state = match &self.mode {
+            AppMode::Config(_) => HeaderState::Config,
+            AppMode::Game(_) => HeaderState::Game,
+        };
+
+        // Transition header if needed
+        if self.header_animation_manager.get_current_state() != &target_header_state {
+            self.header_animation_manager
+                .transition_to(target_header_state);
+        }
+
         egui::TopBottomPanel::top("top_bar")
             .frame(
                 egui::Frame::none()
@@ -47,18 +69,49 @@ impl eframe::App for PartyJeopardyApp {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("Jacko's Jeopardy!")
-                            .color(Palette::CYAN)
-                            .size(22.0)
-                            .strong(),
+                    // Update header elements based on current mode
+                    let title_pos = ui.next_widget_position();
+                    let mode_text = match &self.mode {
+                        AppMode::Config(_) => "Board Editor",
+                        AppMode::Game(_) => "Game Mode",
+                    };
+
+                    // Update animated header elements
+                    self.header_animation_manager.update_element(
+                        "title".to_string(),
+                        "Jacko's Jeopardy!".to_string(),
+                        title_pos,
+                        1.0,
+                        Palette::CYAN,
+                        22.0,
                     );
+
+                    self.header_animation_manager.update_element(
+                        "mode_indicator".to_string(),
+                        mode_text.to_string(),
+                        egui::pos2(title_pos.x + 200.0, title_pos.y),
+                        0.8,
+                        Palette::MAGENTA,
+                        14.0,
+                    );
+
+                    // Render animated elements
+                    self.header_animation_manager.render_element(ui, "title");
+
                     ui.add_space(8.0);
                     ui.colored_label(Palette::MAGENTA, "::");
                     ui.add_space(8.0);
+
+                    self.header_animation_manager
+                        .render_element(ui, "mode_indicator");
+
+                    ui.add_space(16.0);
+
+                    // Action buttons with smooth transitions
                     if theme::accent_button(ui, "Save").clicked() {
                         self.show_save_dialog = true;
                     }
+
                     let in_config = matches!(self.mode, AppMode::Config(_));
                     if in_config {
                         if theme::secondary_button(ui, "Load").clicked() {
