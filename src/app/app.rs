@@ -105,26 +105,34 @@ impl eframe::App for PartyJeopardyApp {
                     self.header_animation_manager
                         .render_element(ui, "mode_indicator");
 
-                    ui.add_space(16.0);
+                    // Right-anchored button group occupying remaining width
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), 0.0),
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            // Action buttons with smooth transitions (right-aligned)
+                            let in_config = matches!(self.mode, AppMode::Config(_));
+                            if in_config {
+                                if theme::secondary_button(ui, "Load").clicked() {
+                                    self.show_load_dialog = true;
+                                }
+                            } else {
+                                let resp = theme::secondary_button(ui, "Load");
+                                resp.widget_info(|| {
+                                    egui::WidgetInfo::labeled(
+                                        egui::WidgetType::Button,
+                                        "Load (disabled)",
+                                    )
+                                });
+                                // visually dim by overlay
+                                if resp.hovered() { /* ignore */ }
+                            }
 
-                    // Action buttons with smooth transitions
-                    if theme::accent_button(ui, "Save").clicked() {
-                        self.show_save_dialog = true;
-                    }
-
-                    let in_config = matches!(self.mode, AppMode::Config(_));
-                    if in_config {
-                        if theme::secondary_button(ui, "Load").clicked() {
-                            self.show_load_dialog = true;
-                        }
-                    } else {
-                        let resp = theme::secondary_button(ui, "Load");
-                        resp.widget_info(|| {
-                            egui::WidgetInfo::labeled(egui::WidgetType::Button, "Load (disabled)")
-                        });
-                        // visually dim by overlay
-                        if resp.hovered() { /* ignore */ }
-                    }
+                            if theme::accent_button(ui, "Save").clicked() {
+                                self.show_save_dialog = true;
+                            }
+                        },
+                    );
                 });
             });
 

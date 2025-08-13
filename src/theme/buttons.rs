@@ -2,7 +2,7 @@
 use crate::theme::{
     colors::Palette,
     effects::{GlowConfig, paint_glow_rect, paint_gradient_rect},
-    utils::{adjust_brightness, create_gradient_colors, with_alpha},
+    utils::adjust_brightness,
 };
 use eframe::egui;
 

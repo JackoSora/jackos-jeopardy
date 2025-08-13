@@ -75,7 +75,7 @@ pub fn show(ctx: &egui::Context, state: &mut ConfigState) -> Option<GameEngine> 
         ui.horizontal(|ui| {
             ui.set_width(available.x);
             for (ci, category) in state.board.categories.iter_mut().enumerate() {
-                let (rect, response) =
+                let (rect, _response) =
                     ui.allocate_exact_size(egui::vec2(col_w, header_h), egui::Sense::hover());
 
                 // Use enhanced category header rendering

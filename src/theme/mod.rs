@@ -15,7 +15,7 @@ pub use buttons::{
 };
 pub use colors::Palette;
 pub use frames::{panel_frame, window_frame};
-pub use transitions::{AnimationHandle, TransitionController, TransitionType};
+pub use transitions::TransitionController;
 pub use utils::adjust_brightness;
 
 use eframe::egui;

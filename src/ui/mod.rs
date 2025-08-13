@@ -13,6 +13,6 @@ pub use board::{paint_enhanced_category_header, paint_enhanced_clue_cell};
 pub use modals::paint_subtle_modal_background;
 
 // Re-export enhanced UI components
-pub use cell_manager::{CellId, CellManager, CellResponse, CellState, EditField, EnhancedCell};
+pub use cell_manager::{CellId, CellManager};
 pub use header_animations::{HeaderAnimationManager, HeaderState};
 pub use layout_transitions::{BoardEditorTransitionSystem, ConfigLayoutState};

@@ -97,16 +97,6 @@ pub fn ease_in_out(t: f32) -> f32 {
 }
 
 /// Smooth step function for very smooth transitions
-pub fn smooth_step(t: f32) -> f32 {
-    t * t * (3.0 - 2.0 * t)
-}
-
-/// Smoother step function for ultra-smooth transitions
-pub fn smoother_step(t: f32) -> f32 {
-    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
-}
-
-/// Bounce easing out for playful effects
 pub fn ease_out_bounce(t: f32) -> f32 {
     if t < 1.0 / 2.75 {
         7.5625 * t * t
@@ -119,41 +109,5 @@ pub fn ease_out_bounce(t: f32) -> f32 {
     }
 }
 
-/// Elastic easing out for spring-like effects
-pub fn ease_out_elastic(t: f32) -> f32 {
-    if t == 0.0 {
-        0.0
-    } else if t == 1.0 {
-        1.0
-    } else {
-        let p = 0.3;
-        let s = p / 4.0;
-        2.0_f32.powf(-10.0 * t) * ((t - s) * (2.0 * std::f32::consts::PI) / p).sin() + 1.0
-    }
-}
-
-/// Ease in cubic for smooth acceleration
-pub fn ease_in_cubic(t: f32) -> f32 {
-    t * t * t
-}
-
-/// Ease out cubic for smooth deceleration
-pub fn ease_out_cubic(t: f32) -> f32 {
-    let t = t - 1.0;
-    t * t * t + 1.0
-}
-
-/// Ease in-out cubic for balanced acceleration/deceleration
-pub fn ease_in_out_cubic(t: f32) -> f32 {
-    if t < 0.5 {
-        4.0 * t * t * t
-    } else {
-        let t = 2.0 * t - 2.0;
-        1.0 + t * t * t / 2.0
-    }
-}
-
-/// Linear easing (no easing)
-pub fn linear(t: f32) -> f32 {
-    t
-}
+// Removed several unused easing helpers to silence warnings: smooth_step, smoother_step,
+// ease_out_elastic, ease_in_cubic, ease_out_cubic, ease_in_out_cubic, linear.
