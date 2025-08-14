@@ -43,6 +43,10 @@ pub enum GameAction {
     AcknowledgeEvent,
     ResolveEvent,
     ReturnToConfig,
+    ManualPointsAdjustment {
+        team_id: u32,
+        new_points: i32,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -58,17 +62,39 @@ pub enum GameActionResult {
 
 #[derive(Debug, Clone)]
 pub enum GameEffect {
-    ScoreChanged { team_id: u32, delta: i32 },
-    ClueRevealed { clue: (usize, usize) },
-    ClueSolved { clue: (usize, usize) },
-    FlashEffect { effect_type: FlashType },
-    EventTriggered { event: GameEvent },
-    EventQueued { event: GameEvent },
-    EventAnimation { animation_type: EventAnimationType },
+    ScoreChanged {
+        team_id: u32,
+        delta: i32,
+    },
+    ClueRevealed {
+        clue: (usize, usize),
+    },
+    ClueSolved {
+        clue: (usize, usize),
+    },
+    FlashEffect {
+        effect_type: FlashType,
+    },
+    EventTriggered {
+        event: GameEvent,
+    },
+    EventQueued {
+        event: GameEvent,
+    },
+    EventAnimation {
+        animation_type: EventAnimationType,
+    },
     ScoreReset,
     DoublePointsActivated,
     ReverseQuestionActivated,
-    ScoreStealApplied { context: StealEventContext },
+    ScoreStealApplied {
+        context: StealEventContext,
+    },
+    ManualScoreAdjustment {
+        team_id: u32,
+        old_score: i32,
+        new_score: i32,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -130,6 +156,10 @@ impl GameActionHandler {
             GameAction::AcknowledgeEvent => self.handle_acknowledge_event(state),
             GameAction::ResolveEvent => self.handle_resolve_event(state),
             GameAction::ReturnToConfig => self.handle_return_to_config(state),
+            GameAction::ManualPointsAdjustment {
+                team_id,
+                new_points,
+            } => self.handle_manual_points_adjustment(state, team_id, new_points),
         }
     }
 
@@ -748,6 +778,35 @@ impl GameActionHandler {
             new_phase: PlayPhase::Finished,
         })
     }
+
+    fn handle_manual_points_adjustment(
+        &self,
+        state: &mut crate::game::state::GameState,
+        team_id: u32,
+        new_points: i32,
+    ) -> Result<GameActionResult, GameError> {
+        // Find the team and update their score
+        if let Some(team) = state.teams.iter_mut().find(|t| t.id == team_id) {
+            let old_score = team.score;
+            team.score = new_points;
+
+            let effects = vec![GameEffect::ManualScoreAdjustment {
+                team_id,
+                old_score,
+                new_score: new_points,
+            }];
+
+            Ok(GameActionResult::StateChanged {
+                new_phase: state.phase.clone(),
+                effects,
+            })
+        } else {
+            Err(GameError::InvalidAction {
+                action: "ManualPointsAdjustment".to_string(),
+                reason: format!("Team with ID {} not found", team_id),
+            })
+        }
+    }
 }
 
 /// Find indices of the lowest-scoring team (thief) and highest-scoring team (victim).
@@ -770,5 +829,104 @@ fn lowest_and_highest_team_indices(teams: &[Team]) -> Option<(usize, usize)> {
         None
     } else {
         Some((min_i, max_i))
+    }
+}
+
+#[cfg(test)]
+mod manual_points_tests {
+    use super::*;
+    use crate::core::Board;
+    use crate::game::GameEngine;
+
+    #[test]
+    fn test_manual_points_adjustment_valid_team() {
+        let board = Board::default();
+        let mut engine = GameEngine::new(board);
+
+        // Add a team
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "Test Team".to_string(),
+        });
+
+        let team_id = engine.get_state().teams[0].id;
+        let initial_score = engine.get_state().teams[0].score;
+
+        // Manually adjust points
+        let result = engine.handle_action(GameAction::ManualPointsAdjustment {
+            team_id,
+            new_points: 500,
+        });
+
+        assert!(result.is_ok());
+
+        // Verify the score was updated
+        let updated_score = engine.get_state().teams[0].score;
+        assert_eq!(updated_score, 500);
+        assert_ne!(updated_score, initial_score);
+
+        // Verify the result contains the correct effect
+        if let Ok(GameActionResult::StateChanged { effects, .. }) = result {
+            assert_eq!(effects.len(), 1);
+            if let GameEffect::ManualScoreAdjustment {
+                team_id: effect_team_id,
+                old_score,
+                new_score,
+            } = &effects[0]
+            {
+                assert_eq!(*effect_team_id, team_id);
+                assert_eq!(*old_score, initial_score);
+                assert_eq!(*new_score, 500);
+            } else {
+                panic!("Expected ManualScoreAdjustment effect");
+            }
+        } else {
+            panic!("Expected StateChanged result");
+        }
+    }
+
+    #[test]
+    fn test_manual_points_adjustment_invalid_team() {
+        let board = Board::default();
+        let mut engine = GameEngine::new(board);
+
+        // Try to adjust points for non-existent team
+        let result = engine.handle_action(GameAction::ManualPointsAdjustment {
+            team_id: 999,
+            new_points: 500,
+        });
+
+        assert!(result.is_err());
+
+        if let Err(GameError::InvalidAction { action, reason }) = result {
+            assert_eq!(action, "ManualPointsAdjustment");
+            assert!(reason.contains("Team with ID 999 not found"));
+        } else {
+            panic!("Expected InvalidAction error");
+        }
+    }
+
+    #[test]
+    fn test_manual_points_adjustment_negative_points() {
+        let board = Board::default();
+        let mut engine = GameEngine::new(board);
+
+        // Add a team
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "Test Team".to_string(),
+        });
+
+        let team_id = engine.get_state().teams[0].id;
+
+        // Manually adjust to negative points
+        let result = engine.handle_action(GameAction::ManualPointsAdjustment {
+            team_id,
+            new_points: -100,
+        });
+
+        assert!(result.is_ok());
+
+        // Verify negative points are allowed
+        let updated_score = engine.get_state().teams[0].score;
+        assert_eq!(updated_score, -100);
     }
 }

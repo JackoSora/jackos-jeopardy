@@ -180,6 +180,10 @@ impl GameRules {
                 // Anyone can return to config
                 true
             }
+            GameAction::ManualPointsAdjustment { .. } => {
+                // Manual points adjustment is allowed in any active game phase
+                !matches!(state.phase, PlayPhase::Lobby | PlayPhase::Finished)
+            }
         }
     }
 
@@ -231,6 +235,7 @@ impl GameRules {
             GameAction::QueueEvent { .. } => false,
             GameAction::PlayEventAnimation { .. } => false,
             GameAction::ReturnToConfig => true,
+            GameAction::ManualPointsAdjustment { .. } => true,
         }
     }
 }

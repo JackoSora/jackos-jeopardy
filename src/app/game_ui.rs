@@ -7,7 +7,8 @@ use crate::game::{GameAction, GameActionResult, GameEngine, PlayPhase};
 use crate::theme::Palette;
 use crate::theme::{ModalButtonType, enhanced_modal_button};
 use crate::ui::{
-    paint_enhanced_category_header, paint_enhanced_clue_cell, paint_subtle_modal_background,
+    ManualPointsModal, paint_enhanced_category_header, paint_enhanced_clue_cell,
+    paint_subtle_modal_background, show_manual_points_modal,
 };
 use std::time::{Duration, Instant};
 
@@ -24,6 +25,10 @@ enum StealOutcome {
 }
 
 pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode> {
+    let mut manual_points_modal: ManualPointsModal = ctx
+        .memory_mut(|m| m.data.get_temp(egui::Id::new("manual_points_modal")))
+        .unwrap_or_default();
+
     egui::SidePanel::left("teams")
         .frame(crate::theme::panel_frame())
         .show(ctx, |ui| {
@@ -44,6 +49,15 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
                     name: format!("Team {}", game_engine.team_count() + 1),
                 };
                 let _ = game_engine.handle_action(action);
+            }
+
+            // Add manual points adjustment button for active game phases
+            if !in_lobby && !game_engine.get_state().teams.is_empty() {
+                ui.add_space(10.0);
+                if crate::theme::secondary_button(ui, "Adjust Points").clicked() {
+                    manual_points_modal.initialize_inputs(&game_engine.get_state().teams);
+                    manual_points_modal.show();
+                }
             }
         });
 
@@ -484,6 +498,27 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
             });
         }
     });
+
+    // Handle manual points modal
+    if let Some(changes) = show_manual_points_modal(
+        ctx,
+        &mut manual_points_modal,
+        &game_engine.get_state().teams,
+    ) {
+        for (team_id, new_points) in changes {
+            let _ = game_engine.handle_action(GameAction::ManualPointsAdjustment {
+                team_id,
+                new_points,
+            });
+        }
+    }
+
+    // Store modal state
+    ctx.memory_mut(|m| {
+        m.data
+            .insert_temp(egui::Id::new("manual_points_modal"), manual_points_modal);
+    });
+
     next_mode
 }
 
