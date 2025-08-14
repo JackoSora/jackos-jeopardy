@@ -14,6 +14,8 @@ pub enum PlayPhase {
     Showing {
         clue: (usize, usize),
         owner_team_id: u32,
+        attempt_count: u32,
+        max_attempts: u32,
     },
     Steal {
         clue: (usize, usize),

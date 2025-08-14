@@ -2,7 +2,23 @@ use crate::core::Team;
 use crate::game::events::{EventAnimationType, EventError, GameEvent, StealEventContext};
 use crate::game::rules::GameRules;
 use crate::game::scoring::ScoringEngine;
-use crate::game::state::PlayPhase;
+use crate::game::state::{GameState, PlayPhase};
+
+/// Utility function to determine question value from clue coordinates
+fn get_question_points(state: &GameState, clue: (usize, usize)) -> u32 {
+    state
+        .board
+        .categories
+        .get(clue.0)
+        .and_then(|cat| cat.clues.get(clue.1))
+        .map(|c| c.points)
+        .unwrap_or(0)
+}
+
+/// Determine max attempts based on question value
+fn calculate_max_attempts(points: u32) -> u32 {
+    if points > 500 { 2 } else { 1 }
+}
 
 #[derive(Debug, Clone)]
 pub enum GameAction {
@@ -235,9 +251,14 @@ impl GameActionHandler {
             }
         }
 
+        let points = get_question_points(state, clue);
+        let max_attempts = calculate_max_attempts(points);
+
         let new_phase = PlayPhase::Showing {
             clue,
             owner_team_id: team_id,
+            attempt_count: 1,
+            max_attempts,
         };
         state.phase = new_phase.clone();
 
@@ -335,8 +356,51 @@ impl GameActionHandler {
             });
         }
 
-        let mut effects = Vec::new();
+        // Get current attempt info from showing phase
+        if let PlayPhase::Showing {
+            attempt_count,
+            max_attempts,
+            ..
+        } = &state.phase
+        {
+            let mut effects = Vec::new();
 
+            // Always play the incorrect animation
+            effects.push(GameEffect::FlashEffect {
+                effect_type: FlashType::Incorrect,
+            });
+
+            // Check if this is the final attempt
+            if *attempt_count < *max_attempts {
+                // First attempt on high-value question - no point deduction, stay in showing
+                let new_phase = PlayPhase::Showing {
+                    clue,
+                    owner_team_id: team_id,
+                    attempt_count: attempt_count + 1,
+                    max_attempts: *max_attempts,
+                };
+                state.phase = new_phase.clone();
+
+                return Ok(GameActionResult::StateChanged { new_phase, effects });
+            } else {
+                // Final attempt failed - proceed with existing logic (deduct points, go to stealing)
+                return self.handle_final_attempt_incorrect(state, clue, team_id, effects);
+            }
+        } else {
+            return Err(GameError::InvalidAction {
+                action: "AnswerIncorrect".to_string(),
+                reason: "Can only answer incorrect in showing phase".to_string(),
+            });
+        }
+    }
+
+    fn handle_final_attempt_incorrect(
+        &self,
+        state: &mut crate::game::state::GameState,
+        clue: (usize, usize),
+        team_id: u32,
+        mut effects: Vec<GameEffect>,
+    ) -> Result<GameActionResult, GameError> {
         // Deduct points from team (double penalty if Double Points event is active)
         if let Some(category) = state.board.categories.get(clue.0) {
             if let Some(c) = category.clues.get(clue.1) {
@@ -358,10 +422,6 @@ impl GameActionHandler {
                 }
             }
         }
-
-        effects.push(GameEffect::FlashEffect {
-            effect_type: FlashType::Incorrect,
-        });
 
         // Create steal queue using rules
         let mut queue = self.rules.get_steal_queue(state, team_id);
@@ -928,5 +988,472 @@ mod manual_points_tests {
         // Verify negative points are allowed
         let updated_score = engine.get_state().teams[0].score;
         assert_eq!(updated_score, -100);
+    }
+}
+#[cfg(test)]
+mod two_attempt_tests {
+    use super::*;
+    use crate::core::{Board, Category, Clue};
+    use crate::game::GameEngine;
+
+    fn create_test_board_with_high_value_questions() -> Board {
+        let mut board = Board::default();
+        board.categories = vec![Category {
+            name: "Test Category".to_string(),
+            clues: vec![
+                Clue {
+                    id: 1,
+                    question: "Low value question".to_string(),
+                    answer: "Low answer".to_string(),
+                    points: 200,
+                    solved: false,
+                    revealed: false,
+                },
+                Clue {
+                    id: 2,
+                    question: "High value question".to_string(),
+                    answer: "High answer".to_string(),
+                    points: 800,
+                    solved: false,
+                    revealed: false,
+                },
+            ],
+        }];
+        board
+    }
+
+    #[test]
+    fn test_utility_functions() {
+        let board = create_test_board_with_high_value_questions();
+        let state = crate::game::state::GameState::new(board);
+
+        // Test get_question_points
+        assert_eq!(get_question_points(&state, (0, 0)), 200);
+        assert_eq!(get_question_points(&state, (0, 1)), 800);
+        assert_eq!(get_question_points(&state, (1, 0)), 0); // Invalid clue
+
+        // Test calculate_max_attempts
+        assert_eq!(calculate_max_attempts(200), 1);
+        assert_eq!(calculate_max_attempts(500), 1);
+        assert_eq!(calculate_max_attempts(501), 2);
+        assert_eq!(calculate_max_attempts(800), 2);
+    }
+
+    #[test]
+    fn test_low_value_question_single_attempt() {
+        let board = create_test_board_with_high_value_questions();
+        let mut engine = GameEngine::new(board);
+
+        // Add a team and start game
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "Test Team".to_string(),
+        });
+        let _ = engine.handle_action(GameAction::StartGame);
+
+        let team_id = engine.get_state().teams[0].id;
+
+        // Select low-value question (200 points)
+        let result = engine.handle_action(GameAction::SelectClue {
+            clue: (0, 0),
+            team_id,
+        });
+        assert!(result.is_ok());
+
+        // Verify showing phase with single attempt
+        if let PlayPhase::Showing {
+            attempt_count,
+            max_attempts,
+            ..
+        } = &engine.get_state().phase
+        {
+            assert_eq!(*attempt_count, 1);
+            assert_eq!(*max_attempts, 1);
+        } else {
+            panic!("Expected Showing phase");
+        }
+
+        // Answer incorrectly - should go directly to stealing
+        let result = engine.handle_action(GameAction::AnswerIncorrect {
+            clue: (0, 0),
+            team_id,
+        });
+        assert!(result.is_ok());
+
+        // Should be in stealing phase
+        assert!(matches!(engine.get_state().phase, PlayPhase::Steal { .. }));
+
+        // Team should have lost points
+        assert_eq!(engine.get_state().teams[0].score, -200);
+    }
+
+    #[test]
+    fn test_high_value_question_first_attempt_incorrect_second_correct() {
+        let board = create_test_board_with_high_value_questions();
+        let mut engine = GameEngine::new(board);
+
+        // Add a team and start game
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "Test Team".to_string(),
+        });
+        let _ = engine.handle_action(GameAction::StartGame);
+
+        let team_id = engine.get_state().teams[0].id;
+
+        // Select high-value question (800 points)
+        let result = engine.handle_action(GameAction::SelectClue {
+            clue: (0, 1),
+            team_id,
+        });
+        assert!(result.is_ok());
+
+        // Verify showing phase with two attempts
+        if let PlayPhase::Showing {
+            attempt_count,
+            max_attempts,
+            ..
+        } = &engine.get_state().phase
+        {
+            assert_eq!(*attempt_count, 1);
+            assert_eq!(*max_attempts, 2);
+        } else {
+            panic!("Expected Showing phase");
+        }
+
+        // First attempt incorrect - should stay in showing phase, no point deduction
+        let initial_score = engine.get_state().teams[0].score;
+        let result = engine.handle_action(GameAction::AnswerIncorrect {
+            clue: (0, 1),
+            team_id,
+        });
+        assert!(result.is_ok());
+
+        // Should still be in showing phase with incremented attempt count
+        if let PlayPhase::Showing {
+            attempt_count,
+            max_attempts,
+            ..
+        } = &engine.get_state().phase
+        {
+            assert_eq!(*attempt_count, 2);
+            assert_eq!(*max_attempts, 2);
+        } else {
+            panic!("Expected Showing phase after first incorrect attempt");
+        }
+
+        // No points should be deducted yet
+        assert_eq!(engine.get_state().teams[0].score, initial_score);
+
+        // Second attempt correct - should award points and go to resolved
+        let result = engine.handle_action(GameAction::AnswerCorrect {
+            clue: (0, 1),
+            team_id,
+        });
+        assert!(result.is_ok());
+
+        // Should be in resolved phase
+        assert!(matches!(
+            engine.get_state().phase,
+            PlayPhase::Resolved { .. }
+        ));
+
+        // Team should have gained points
+        assert_eq!(engine.get_state().teams[0].score, initial_score + 800);
+
+        // Clue should be solved
+        assert!(engine.get_state().board.categories[0].clues[1].solved);
+    }
+
+    #[test]
+    fn test_high_value_question_both_attempts_incorrect() {
+        let board = create_test_board_with_high_value_questions();
+        let mut engine = GameEngine::new(board);
+
+        // Add two teams and start game
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "Team 1".to_string(),
+        });
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "Team 2".to_string(),
+        });
+        let _ = engine.handle_action(GameAction::StartGame);
+
+        let team_id = engine.get_state().teams[0].id;
+
+        // Select high-value question (800 points)
+        let _ = engine.handle_action(GameAction::SelectClue {
+            clue: (0, 1),
+            team_id,
+        });
+
+        // First attempt incorrect
+        let initial_score = engine.get_state().teams[0].score;
+        let _ = engine.handle_action(GameAction::AnswerIncorrect {
+            clue: (0, 1),
+            team_id,
+        });
+
+        // Should still be in showing phase, no point deduction
+        assert!(matches!(
+            engine.get_state().phase,
+            PlayPhase::Showing { .. }
+        ));
+        assert_eq!(engine.get_state().teams[0].score, initial_score);
+
+        // Second attempt incorrect - should deduct points and go to stealing
+        let result = engine.handle_action(GameAction::AnswerIncorrect {
+            clue: (0, 1),
+            team_id,
+        });
+        assert!(result.is_ok());
+
+        // Should be in stealing phase
+        assert!(matches!(engine.get_state().phase, PlayPhase::Steal { .. }));
+
+        // Team should have lost points
+        assert_eq!(engine.get_state().teams[0].score, initial_score - 800);
+    }
+
+    #[test]
+    fn test_high_value_question_first_attempt_correct() {
+        let board = create_test_board_with_high_value_questions();
+        let mut engine = GameEngine::new(board);
+
+        // Add a team and start game
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "Test Team".to_string(),
+        });
+        let _ = engine.handle_action(GameAction::StartGame);
+
+        let team_id = engine.get_state().teams[0].id;
+
+        // Select high-value question (800 points)
+        let _ = engine.handle_action(GameAction::SelectClue {
+            clue: (0, 1),
+            team_id,
+        });
+
+        // First attempt correct - should award points and go to resolved
+        let initial_score = engine.get_state().teams[0].score;
+        let result = engine.handle_action(GameAction::AnswerCorrect {
+            clue: (0, 1),
+            team_id,
+        });
+        assert!(result.is_ok());
+
+        // Should be in resolved phase
+        assert!(matches!(
+            engine.get_state().phase,
+            PlayPhase::Resolved { .. }
+        ));
+
+        // Team should have gained points
+        assert_eq!(engine.get_state().teams[0].score, initial_score + 800);
+
+        // Clue should be solved
+        assert!(engine.get_state().board.categories[0].clues[1].solved);
+    }
+
+    #[test]
+    fn test_boundary_condition_500_points() {
+        let mut board = Board::default();
+        board.categories = vec![Category {
+            name: "Test Category".to_string(),
+            clues: vec![Clue {
+                id: 1,
+                question: "Exactly 500 points".to_string(),
+                answer: "Answer".to_string(),
+                points: 500,
+                solved: false,
+                revealed: false,
+            }],
+        }];
+
+        let mut engine = GameEngine::new(board);
+
+        // Add a team and start game
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "Test Team".to_string(),
+        });
+        let _ = engine.handle_action(GameAction::StartGame);
+
+        let team_id = engine.get_state().teams[0].id;
+
+        // Select 500-point question
+        let result = engine.handle_action(GameAction::SelectClue {
+            clue: (0, 0),
+            team_id,
+        });
+        assert!(result.is_ok());
+
+        // Should have single attempt (500 points is not > 500)
+        if let PlayPhase::Showing {
+            attempt_count,
+            max_attempts,
+            ..
+        } = &engine.get_state().phase
+        {
+            assert_eq!(*attempt_count, 1);
+            assert_eq!(*max_attempts, 1);
+        } else {
+            panic!("Expected Showing phase");
+        }
+    }
+}
+#[cfg(test)]
+mod edge_case_tests {
+    use super::*;
+    use crate::core::{Board, Category, Clue};
+    use crate::game::GameEngine;
+
+    #[test]
+    fn test_invalid_clue_coordinates() {
+        let board = Board::default();
+        let state = crate::game::state::GameState::new(board);
+
+        // Test invalid category index
+        assert_eq!(get_question_points(&state, (999, 0)), 0);
+
+        // Test invalid clue index
+        assert_eq!(get_question_points(&state, (0, 999)), 0);
+
+        // Both invalid
+        assert_eq!(get_question_points(&state, (999, 999)), 0);
+    }
+
+    #[test]
+    fn test_zero_point_questions() {
+        let mut board = Board::default();
+        board.categories = vec![Category {
+            name: "Test Category".to_string(),
+            clues: vec![Clue {
+                id: 1,
+                question: "Zero points".to_string(),
+                answer: "Answer".to_string(),
+                points: 0,
+                solved: false,
+                revealed: false,
+            }],
+        }];
+
+        let mut engine = GameEngine::new(board);
+
+        // Add a team and start game
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "Test Team".to_string(),
+        });
+        let _ = engine.handle_action(GameAction::StartGame);
+
+        let team_id = engine.get_state().teams[0].id;
+
+        // Select zero-point question
+        let result = engine.handle_action(GameAction::SelectClue {
+            clue: (0, 0),
+            team_id,
+        });
+        assert!(result.is_ok());
+
+        // Should have single attempt (0 points defaults to single attempt)
+        if let PlayPhase::Showing {
+            attempt_count,
+            max_attempts,
+            ..
+        } = &engine.get_state().phase
+        {
+            assert_eq!(*attempt_count, 1);
+            assert_eq!(*max_attempts, 1);
+        } else {
+            panic!("Expected Showing phase");
+        }
+    }
+
+    #[test]
+    fn test_attempt_count_validation() {
+        // This test verifies that attempt_count cannot exceed max_attempts
+        // The logic in handle_answer_incorrect should prevent this
+        let mut board = Board::default();
+        board.categories = vec![Category {
+            name: "Test Category".to_string(),
+            clues: vec![Clue {
+                id: 1,
+                question: "High value question".to_string(),
+                answer: "Answer".to_string(),
+                points: 800,
+                solved: false,
+                revealed: false,
+            }],
+        }];
+
+        let mut engine = GameEngine::new(board);
+
+        // Add a team and start game
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "Test Team".to_string(),
+        });
+        let _ = engine.handle_action(GameAction::StartGame);
+
+        let team_id = engine.get_state().teams[0].id;
+
+        // Select high-value question
+        let _ = engine.handle_action(GameAction::SelectClue {
+            clue: (0, 0),
+            team_id,
+        });
+
+        // First incorrect attempt
+        let _ = engine.handle_action(GameAction::AnswerIncorrect {
+            clue: (0, 0),
+            team_id,
+        });
+
+        // Verify we're still in showing phase with attempt_count = 2
+        if let PlayPhase::Showing {
+            attempt_count,
+            max_attempts,
+            ..
+        } = &engine.get_state().phase
+        {
+            assert_eq!(*attempt_count, 2);
+            assert_eq!(*max_attempts, 2);
+        } else {
+            panic!("Expected Showing phase after first incorrect attempt");
+        }
+
+        // Second incorrect attempt should go to stealing phase
+        let result = engine.handle_action(GameAction::AnswerIncorrect {
+            clue: (0, 0),
+            team_id,
+        });
+        assert!(result.is_ok());
+
+        // Should be in stealing phase now
+        assert!(matches!(engine.get_state().phase, PlayPhase::Steal { .. }));
+    }
+
+    #[test]
+    fn test_answer_incorrect_in_wrong_phase() {
+        let board = Board::default();
+        let mut engine = GameEngine::new(board);
+
+        // Add a team but don't start game (stay in lobby)
+        let _ = engine.handle_action(GameAction::AddTeam {
+            name: "Test Team".to_string(),
+        });
+
+        let team_id = engine.get_state().teams[0].id;
+
+        // Try to answer incorrect while in lobby phase
+        let result = engine.handle_action(GameAction::AnswerIncorrect {
+            clue: (0, 0),
+            team_id,
+        });
+
+        // Should return an error
+        assert!(result.is_err());
+        if let Err(GameError::InvalidAction { action, reason }) = result {
+            assert_eq!(action, "AnswerIncorrect");
+            assert!(reason.contains("Can only answer in showing phase"));
+        } else {
+            panic!("Expected InvalidAction error");
+        }
     }
 }

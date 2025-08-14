@@ -203,12 +203,16 @@ pub fn show(ctx: &egui::Context, game_engine: &mut GameEngine) -> Option<AppMode
             PlayPhase::Showing {
                 clue,
                 owner_team_id,
+                attempt_count,
+                max_attempts,
             } => {
                 draw_showing_overlay(
                     ctx,
                     game_engine,
                     *clue,
                     *owner_team_id,
+                    *attempt_count,
+                    *max_attempts,
                     &mut flash,
                     &mut requested_phase,
                     &mut pending_answer,
@@ -527,6 +531,8 @@ fn draw_showing_overlay(
     game_engine: &mut GameEngine,
     clue: (usize, usize),
     owner_team_id: u32,
+    attempt_count: u32,
+    max_attempts: u32,
     flash: &mut Option<(AnswerFlash, Instant)>,
     _requested_phase: &mut Option<PlayPhase>,
     pending_answer: &mut Option<(AnswerFlash, (usize, usize), u32)>,
@@ -565,6 +571,21 @@ fn draw_showing_overlay(
                             .color(Palette::AMBER_GLOW)
                             .size(36.0),
                     );
+
+                    // Attempt indicator for high-value questions
+                    if max_attempts > 1 {
+                        ui.add_space(10.0);
+                        let attempt_text = if attempt_count == 1 {
+                            "First Attempt"
+                        } else {
+                            "Second Attempt"
+                        };
+                        ui.label(
+                            egui::RichText::new(attempt_text)
+                                .color(Palette::MAGENTA)
+                                .size(18.0),
+                        );
+                    }
 
                     ui.add_space(30.0);
 
