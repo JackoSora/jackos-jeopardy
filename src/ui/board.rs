@@ -7,7 +7,6 @@ use crate::theme::{
 };
 use eframe::egui;
 
-/// Enhanced game board cell rendering with animation support
 pub fn paint_enhanced_clue_cell(
     painter: &egui::Painter,
     rect: egui::Rect,
@@ -18,7 +17,6 @@ pub fn paint_enhanced_clue_cell(
     paint_enhanced_clue_cell_with_animation(painter, rect, points, is_solved, is_hovered, 1.0)
 }
 
-/// Enhanced game board cell rendering with animation support
 pub fn paint_enhanced_clue_cell_with_animation(
     painter: &egui::Painter,
     rect: egui::Rect,
@@ -136,7 +134,6 @@ pub fn paint_enhanced_clue_cell_with_animation(
     }
 }
 
-/// Enhanced category header rendering
 pub fn paint_enhanced_category_header(
     painter: &egui::Painter,
     rect: egui::Rect,

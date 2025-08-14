@@ -1,10 +1,8 @@
 // Enhanced animation system with easing functions and state management
 use std::time::{Duration, Instant};
 
-/// Easing function type for smooth animations
 pub type EasingFunction = fn(f32) -> f32;
 
-/// Animation state tracking for smooth transitions
 #[derive(Clone, Debug)]
 pub struct AnimationState {
     pub progress: f32,
@@ -14,7 +12,6 @@ pub struct AnimationState {
     pub status: AnimationStatus,
 }
 
-/// Status of an animation
 #[derive(Clone, Debug, PartialEq)]
 pub enum AnimationStatus {
     Pending,
@@ -24,7 +21,6 @@ pub enum AnimationStatus {
 }
 
 impl AnimationState {
-    /// Create a new animation state
     pub fn new(duration: Duration, easing: EasingFunction) -> Self {
         Self {
             progress: 0.0,
@@ -35,14 +31,12 @@ impl AnimationState {
         }
     }
 
-    /// Start the animation
     pub fn start(&mut self) {
         self.start_time = Instant::now();
         self.status = AnimationStatus::Running;
         self.progress = 0.0;
     }
 
-    /// Update animation progress and return eased value
     pub fn update(&mut self) -> f32 {
         if self.status != AnimationStatus::Running {
             return if self.status == AnimationStatus::Completed {
@@ -63,18 +57,15 @@ impl AnimationState {
         (self.easing)(self.progress.clamp(0.0, 1.0))
     }
 
-    /// Check if animation is complete
     pub fn is_complete(&self) -> bool {
         self.status == AnimationStatus::Completed
     }
 
-    /// Cancel the animation
     pub fn cancel(&mut self) {
         self.status = AnimationStatus::Cancelled;
     }
 }
 
-/// Trait for objects that can be animated
 pub trait AnimationController {
     type State;
 
@@ -87,7 +78,6 @@ pub trait AnimationController {
 
 // Enhanced easing functions for smooth transitions
 
-/// Smooth ease in-out transition
 pub fn ease_in_out(t: f32) -> f32 {
     if t < 0.5 {
         2.0 * t * t
@@ -96,7 +86,6 @@ pub fn ease_in_out(t: f32) -> f32 {
     }
 }
 
-/// Smooth step function for very smooth transitions
 pub fn ease_out_bounce(t: f32) -> f32 {
     if t < 1.0 / 2.75 {
         7.5625 * t * t

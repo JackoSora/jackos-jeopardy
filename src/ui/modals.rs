@@ -6,7 +6,6 @@ use crate::theme::{
 };
 use eframe::egui;
 
-/// Enhanced modal overlay styling
 pub fn paint_enhanced_modal_background(painter: &egui::Painter, rect: egui::Rect) {
     // Enhanced background with subtle gradient and glow
     let bg_start = adjust_brightness(Palette::BG_DARK, 1.1);
@@ -47,7 +46,6 @@ pub fn paint_enhanced_modal_background(painter: &egui::Painter, rect: egui::Rect
     painter.rect_stroke(br_corner, 0.0, egui::Stroke::new(3.0, corner_color));
 }
 
-/// Subtle modal overlay styling for dialogue windows
 pub fn paint_subtle_modal_background(painter: &egui::Painter, rect: egui::Rect) {
     // Muted background with subtle teal/dark gradient
     let bg_start = adjust_brightness(Palette::BG_DARK, 1.05);

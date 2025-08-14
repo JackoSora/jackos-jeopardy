@@ -6,7 +6,6 @@ use crate::theme::{
 };
 use eframe::egui;
 
-/// Enhanced accent button with cyberpunk styling
 pub fn accent_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {
     let desired_size = egui::vec2(90.0, 32.0);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
@@ -54,7 +53,6 @@ pub fn accent_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Respon
     response
 }
 
-/// Enhanced secondary button with neon outline
 pub fn secondary_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {
     let desired_size = egui::vec2(90.0, 32.0);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
@@ -103,7 +101,6 @@ pub fn secondary_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Res
     response
 }
 
-/// Enhanced danger button with warning effects
 pub fn danger_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {
     let button = egui::Button::new(
         egui::RichText::new(text)
@@ -115,7 +112,6 @@ pub fn danger_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Respon
     ui.add(button)
 }
 
-/// Button type for modal dialogs
 #[derive(Clone, Copy)]
 pub enum ModalButtonType {
     Correct,
@@ -123,7 +119,6 @@ pub enum ModalButtonType {
     Close,
 }
 
-/// Enhanced modal button with cyberpunk styling
 pub fn enhanced_modal_button(
     ui: &mut egui::Ui,
     text: impl Into<String>,

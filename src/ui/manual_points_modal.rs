@@ -96,7 +96,6 @@ impl ManualPointsModal {
     }
 }
 
-/// Show the manual points adjustment modal and return pending changes if confirmed
 pub fn show_manual_points_modal(
     ctx: &egui::Context,
     modal: &mut ManualPointsModal,

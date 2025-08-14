@@ -20,7 +20,6 @@ pub use utils::adjust_brightness;
 
 use eframe::egui;
 
-/// Apply the global cyberpunk theme to the egui context
 pub fn apply_global_style(ctx: &egui::Context) {
     let mut visuals = egui::Visuals::dark();
 
@@ -96,7 +95,6 @@ pub fn apply_global_style(ctx: &egui::Context) {
     ctx.set_style(style);
 }
 
-/// Paint the board background with cyberpunk styling
 pub fn paint_board_background(ui: &egui::Ui) {
     let rect = ui.max_rect();
     let painter = ui.painter_at(rect);
